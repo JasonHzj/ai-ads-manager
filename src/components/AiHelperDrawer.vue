@@ -12,7 +12,12 @@
         <el-select v-model="form.model" placeholder="选择AI模型" style="width: 100%">
           <el-option label="GPT-4o (推荐)" value="openai/gpt-4o" />
           <el-option label="GPT-4 Turbo" value="openai/gpt-4-turbo" />
+          <el-option label="GPT-5" value="openai/gpt-5" />
+          <el-option label="Gemini 2.5 Pro" value="google/gemini-2.5-pro" />
           <el-option label="Gemini 1.5 Pro" value="google/gemini-1.5-pro-latest" />
+          <el-option label="Claude Opus 4" value="anthropic/claude-opus-4" />
+          <el-option label="Claude Sonnet 4" value="anthropic/claude-sonnet-4" />
+          <el-option label="DeepSeek: R1" value="deepseek/deepseek-r1" />
         </el-select>
       </el-form-item>
 

@@ -7,6 +7,8 @@ import MainLayout from '../layouts/MainLayout.vue'
 import HomeView from '../views/HomeView.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
+// --- 新增 --- 导入我们刚创建的佣金视图
+import CommissionDataView from '../views/CommissionDataView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,6 +34,15 @@ const router = createRouter({
           path: 'ad-jobs',
           component: () => import('../views/AdJobsView.vue'),
           meta: { permission: 'can_view_ai_jobs' },
+        },
+        {
+          path: 'commission-data',
+          name: 'commission-data',
+          component: CommissionDataView,
+          meta: {
+            permission: 'can_view_commission_data', // 为新页面设置权限标识
+            title: '佣金数据',
+          },
         },
         { path: 'profile', component: () => import('../views/ProfileView.vue') },
       ],

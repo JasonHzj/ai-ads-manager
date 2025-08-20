@@ -9,7 +9,7 @@ import axios from 'axios'
 
 // 创建一个axios实例，并配置基础URL
 const apiClient = axios.create({
-  baseURL: 'http://localhost:3006/api', // 您的后端API基础地址
+  baseURL: import.meta.env.VITE_API_BASE_URL + '/api', // 您的后端API基础地址
   timeout: 5000, // 请求超时时间
 })
 

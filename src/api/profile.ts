@@ -3,9 +3,17 @@
 import axios from 'axios'
 import { useUserStore } from '@/stores/user'
 
+// 定义 PlatformAccount 类型，方便多处使用
+export interface PlatformAccount {
+  id?: number
+  platform_name: string
+  account_name: string
+  api_token?: string // 发送时需要，获取时不返回
+}
+
 // 与您项目中其他API文件保持一致，创建独立的axios实例
 const apiClient = axios.create({
-  baseURL: 'http://localhost:3006/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL + '/api',
   timeout: 10000,
 })
 
@@ -35,3 +43,17 @@ export const updateUserStatusAndRoleAPI = (
 ) => apiClient.put(`/admin/users/${userId}`, data)
 export const updateUserPermissionsAPI = (userId: number, permissions: any) =>
   apiClient.put(`/admin/users/${userId}/permissions`, { permissions })
+/**
+ * 获取当前用户的所有联盟平台账户
+ */
+export const getPlatformAccountsAPI = (): Promise<any> => {
+  // 返回 any 以匹配 axios 原始响应
+  return apiClient.get('/user/platform-accounts')
+}
+
+/**
+ * 批量保存(覆盖)当前用户的所有联盟平台账户
+ */
+export const savePlatformAccountsAPI = (accounts: PlatformAccount[]): Promise<any> => {
+  return apiClient.post('/user/platform-accounts', { accounts })
+}

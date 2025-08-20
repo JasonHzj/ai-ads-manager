@@ -8,7 +8,7 @@ import axios from 'axios'
 import { useUserStore } from '@/stores/user'
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:3006/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL + '/api',
   timeout: 10000, // AI请求可能需要更长时间
 })
 

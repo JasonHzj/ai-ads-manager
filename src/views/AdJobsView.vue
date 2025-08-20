@@ -236,6 +236,7 @@ import type { UploadInstance } from 'element-plus'
 import AdCampaignDrawer from '@/components/AdCampaignDrawer.vue'
 import { socket } from '@/socket'; // 导入我们创建的共享socket实例
 import { useAdOptions } from '@/composables/useAdOptions' // 1. 导入 useAdOptions 以获取映射数据
+import { useUserStore } from '@/stores/user' // 1. 导入 useUserStore
 
 // TypeScript接口定义
 interface Campaign {
@@ -273,7 +274,7 @@ const filters = reactive({
 })
 const selectedAccounts = ref<Account[]>([])
 const uploadRef = ref<UploadInstance>()
-
+const userStore = useUserStore() // 2. 获取 userStore 实例
 
 // 4. 新增用于控制进度条的状态
 const progress = reactive({
@@ -462,13 +463,20 @@ const handleFileChange = async (file: any) => {
 // --- ▲▲▲ 函数结束 ▲▲▲ ---
 
 
-// 经过优化的 fetchAccounts 函数，支持“静默刷新”
 const fetchAccounts = async (isSilent = false) => {
   if (!isSilent) {
     loading.value = true
   }
   try {
-    const res = await getAccountsAPI()
+    const currentUser = userStore.userInfo
+    if (!currentUser) {
+      console.error('无法获取账户列表，因为用户信息不存在！')
+      // 这里可以添加一个登出或错误提示逻辑
+      loading.value = false
+      return
+    }
+    // 将包含 userId 的对象作为参数传递
+    const res = await getAccountsAPI({ userId: currentUser.id })
     if (res.data.status === 0) {
       allAccounts.value = res.data.data
     }

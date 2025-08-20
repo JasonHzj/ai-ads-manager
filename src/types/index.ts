@@ -1,3 +1,8 @@
+export interface ApiResponse<T = any> {
+  status: number
+  message: string
+  data: T
+}
 export interface Campaign {
   id?: string
   name: string
@@ -52,4 +57,17 @@ export interface AiResultItem {
 export interface AiResults {
   headlines: AiResultItem[]
   descriptions: AiResultItem[]
+}
+// ▼▼▼ 修改 UserInfo 接口 ▼▼▼
+export interface UserInfo {
+  id: number
+  username: string
+  nickname: string | null
+  email: string | null // 确保 email 字段存在
+  role: 'user' | 'admin'
+  status: 'pending' | 'approved' | 'rejected'
+  open_router_api_key: string | null
+  permissions: { [key: string]: boolean }
+  // --- 新增: 为 UserInfo 添加可选的 token 字段 ---
+  linkbux_api_token?: string | null
 }
