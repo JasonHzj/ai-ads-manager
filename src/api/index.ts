@@ -3,8 +3,8 @@ import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:3006/api',
-  timeout: 20000,
+  baseURL: import.meta.env.VITE_API_BASE_URL + '/api',
+  timeout: 30000,
 })
 
 // 请求拦截器
@@ -28,7 +28,9 @@ apiClient.interceptors.response.use(
 // --- API 函数 ---
 export const loginAPI = (data: any) => apiClient.post('/login', data)
 export const registerAPI = (data: any) => apiClient.post('/register', data)
-export const getAccountsAPI = () => apiClient.get('/accounts')
+export const getAccountsAPI = (data: { userId: number }) => {
+  return apiClient.post('/accounts', data)
+}
 export const getCountriesAPI = () => apiClient.get('/options/countries')
 export const getLanguagesForCountryAPI = (countryId: string | number) =>
   apiClient.get(`/options/languages-for-country/${countryId}`)
@@ -52,3 +54,6 @@ export const importExcelAPI = (formData: FormData) =>
 // 新增：批量请求删除任务的API
 export const requestBatchDeleteAPI = (jobIds: number[]) =>
   apiClient.post('/jobs/request-batch-deletion', { jobIds })
+export const getTransactionsAPI = () => apiClient.get('/platforms/transactions')
+export const triggerInitialSyncAPI = (accountId: number, startDate: string) =>
+  apiClient.post('/platforms/linkbux/initial-sync', { accountId, startDate })

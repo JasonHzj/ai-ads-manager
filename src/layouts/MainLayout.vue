@@ -22,6 +22,12 @@
           <el-icon><Document /></el-icon>
           <template #title>AI投放</template>
         </el-menu-item>
+
+
+        <el-menu-item index="/commission-data">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>佣金中心</span>
+        </el-menu-item>
         <el-menu-item index="/profile">
           <el-icon><User /></el-icon>
           <template #title>个人中心</template>
@@ -55,16 +61,18 @@
       </el-main>
 
       <el-footer class="footer">
-        <span>AI Ads Manager v1.0.0 ©2025 Created by You</span>
+        <span>AI Ads Manager v1.1.0 ©2025 Created by Jason</span>
       </el-footer>
       </el-container>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Document, DataLine, Fold, Expand, User } from '@element-plus/icons-vue'
+import { ref, onMounted, onUnmounted } from 'vue' // 引入 onMounted 和 onUnmounted
+import { Document, DataLine, Fold, Expand, User, DataAnalysis } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { socket } from '@/socket' // 引入 socket 实例
 
 const userStore = useUserStore()
 const isCollapsed = ref(false)
@@ -76,6 +84,23 @@ const toggleSidebar = () => {
 const handleLogout = () => {
   userStore.logout()
 }
+
+// 新增：在组件挂载时建立 Socket 连接
+onMounted(() => {
+  if (userStore.token && !socket.connected) {
+    console.log('[MainLayout] ==> 正在尝试连接 Socket.IO...');
+    socket.connect();
+  }
+
+});
+
+// 新增：在组件卸载（用户登出）时断开连接，以释放资源
+onUnmounted(() => {
+  if (socket.connected) {
+    console.log('[MainLayout] ==> 正在断开 Socket.IO 连接...');
+    socket.disconnect();
+  }
+});
 </script>
 
 <style scoped>

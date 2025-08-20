@@ -114,7 +114,7 @@ export default {
 import { ref, reactive, onMounted, computed } from 'vue'
 import { getAccountsAPI, createJobAPI, generateAIContentAPI } from '@/api' // 导入需要的API
 import { ElMessage, ElMessageBox } from 'element-plus'
-
+import { useUserStore } from '@/stores/user' // 1. 导入用户状态存储 (user store)
 const emit = defineEmits(['success', 'cancel'])
 
 // 表单最终提交的数据
@@ -132,7 +132,7 @@ const allAccounts = ref<any[]>([])
 const filters = reactive({ selectedManager: '', campaignStatus: 'all' })
 // 加载状态
 const loading = reactive({ form: true, ai: false, submit: false })
-
+const userStore = useUserStore() // 2. 获取 user store 的实例
 // **核心计算属性**
 
 // 1. 动态计算出所有唯一的经理账户名称
@@ -164,9 +164,21 @@ const filteredSubAccounts = computed(() => {
 })
 
 // 获取初始账户数据
+// 获取初始账户数据
 const fetchInitialOptions = async () => {
+  // ▼▼▼ 我刚刚修改的部分 ▼▼▼
   try {
-    const res = await getAccountsAPI()
+    // 1. 从 userStore 获取当前用户信息
+    const currentUser = userStore.userInfo
+    if (!currentUser) {
+        ElMessage.error('无法获取账户列表，因为当前没有用户信息！')
+        loading.form = false // 确保在返回前停止加载状态
+        return // 提前退出函数
+    }
+
+    // 2. 调用 API 时，将包含 userId 的对象作为参数传递
+    const res = await getAccountsAPI({ userId: currentUser.id })
+
     if (res.data.status === 0) {
       allAccounts.value = res.data.data
     } else {
@@ -174,10 +186,11 @@ const fetchInitialOptions = async () => {
     }
   } catch (error) {
     console.error('获取账户列表时发生网络错误:', error)
-    // 全局拦截器会显示错误，这里只做日志记录
+    // 全局拦截器通常会显示错误，这里只做日志记录
   } finally {
     loading.form = false
   }
+  // ▲▲▲ 修改结束 ▲▲▲
 }
 
 // **新增：处理子账户选择事件，触发警告**
