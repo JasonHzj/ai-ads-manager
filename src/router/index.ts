@@ -1,6 +1,6 @@
 // 文件: src/router/index.ts (类型修正版)
 
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import MainLayout from '../layouts/MainLayout.vue'
@@ -8,48 +8,78 @@ import HomeView from '../views/HomeView.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 // --- 新增 --- 导入我们刚创建的佣金视图
-import CommissionDataView from '../views/CommissionDataView.vue'
+// import CommissionDataView from '../views/CommissionDataView.vue'
+
+// 我们不再需要自定义类型，直接使用 Vue Router 的原生类型即可
+const routes: Array<RouteRecordRaw> = [
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('../views/LoginView.vue'),
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: () => import('../views/RegisterView.vue'),
+  },
+  {
+    path: '/',
+    component: MainLayout,
+    redirect: '/home',
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: 'home',
+        name: 'home',
+        component: () => import('../views/HomeView.vue'),
+        meta: { title: '主控台', icon: 'DataLine' }, // Using the icon name as a string
+      },
+      {
+        path: 'ad-jobs',
+        name: 'ad-jobs',
+        component: () => import('../views/AdJobsView.vue'),
+        meta: {
+          title: 'AI投放',
+          icon: 'Document',
+          permission: 'can_view_ai_jobs',
+        },
+      },
+      // ▼▼▼ CORE FIX: Use the 'children' property for sub-routes ▼▼▼
+      {
+        path: 'commission-data',
+        name: 'commission-data-parent', // Give parent a unique name
+        // The component can be a simple <router-view /> wrapper
+        // component: () => import('../views/CommissionDataView.vue'),
+        // redirect: '/commission-data/dashboard',
+        meta: {
+          title: '佣金中心',
+          icon: 'DataAnalysis',
+        },
+        children: [
+          {
+            path: 'dashboard',
+            name: 'dashboard',
+            component: () => import('../views/DashboardView.vue'),
+            meta: { title: 'Linkbux看板', icon: 'TrendCharts' }, // Use a different icon for clarity
+          },
+          // You can add more children here later
+        ],
+      },
+      // ▲▲▲ FIX END ▲▲▲
+      {
+        path: 'profile',
+        name: 'profile',
+        component: () => import('../views/ProfileView.vue'),
+        meta: { title: '个人中心', icon: 'User' },
+      },
+    ],
+  },
+]
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/login',
-      name: 'login',
-      component: LoginView,
-    },
-    {
-      path: '/register',
-      name: 'register',
-      component: RegisterView,
-    },
-    {
-      path: '/',
-      component: MainLayout,
-      redirect: '/dashboard',
-      meta: { requiresAuth: true },
-      children: [
-        { path: 'dashboard', component: HomeView },
-        {
-          path: 'ad-jobs',
-          component: () => import('../views/AdJobsView.vue'),
-          meta: { permission: 'can_view_ai_jobs' },
-        },
-        {
-          path: 'commission-data',
-          name: 'commission-data',
-          component: CommissionDataView,
-          meta: {
-            permission: 'can_view_commission_data', // 为新页面设置权限标识
-            title: '佣金数据',
-          },
-        },
-        { path: 'profile', component: () => import('../views/ProfileView.vue') },
-      ],
-    },
-  ],
+  routes: routes,
 })
-
 // 升级路由守卫
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()

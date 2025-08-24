@@ -1,0 +1,213 @@
+/* =======================================================================
+// 文件: src/styles/dashboard.css
+// 作用: 定义看板的全局深色主题样式
+// ======================================================================= */
+
+/* ---- 全局变量定义 ---- */
+:root {
+  --db-bg-color: #ffffff; /* 主背景色 */
+  --db-card-bg-color: rgba(255, 255, 255, 1); /* 卡片背景色 */
+  --db-border-color: rgb(245, 245, 245); /* 边框颜色 */
+  --db-title-color: #242424; /* 标题颜色 */
+  --db-text-color: #2a2a2a; /* 主要文字颜色 */
+  --db-highlight-color: #5470c6; /* 高亮/主色调 */
+  --db-success-color: #2dd05e; /* 上升/成功颜色 */
+  --db-danger-color: #ff5b5b; /* 下降/危险颜色 */
+  --db-font-number: 'Oswald', sans-serif; /* 数字专用字体 (可选) */
+}
+
+/* ---- 整体布局背景 ---- */
+.dashboard-container {
+  background-color: var(--db-bg-color);
+  padding: 20px;
+  min-height: calc(100vh - 101px); /* 减去 header 和 footer 的高度 */
+}
+
+/* ---- 卡片统一样式 ---- */
+.db-card {
+  background-color: var(--db-card-bg-color);
+  border: 1px solid var(--db-border-color);
+  border-radius: 8px;
+  backdrop-filter: blur(5px); /* 毛玻璃效果 */
+  color: var(--db-text-color);
+  position: relative; /* 用于装饰性伪元素定位 */
+  overflow: hidden; /* 隐藏伪元素的溢出部分 */
+  box-shadow: 0px 0px 5px rgba(138, 138, 138, 0.1) !important;
+}
+
+/* 卡片标题 */
+.db-card-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--db-title-color);
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--db-border-color);
+  margin-bottom: 20px;
+}
+
+/* 卡片科技感边角装饰 */
+.db-card::before,
+.db-card::after {
+  content: '';
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-color: var(--db-highlight-color);
+  border-style: solid;
+}
+.date-picker-container {
+  padding: 10px;
+  box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fff;
+  margin-bottom: 15px;
+}
+.custom-date-picker2 {
+  border-style: none !important;
+  box-shadow: none !important;
+}
+.db-card::before {
+  top: -2px;
+  left: -2px;
+  border-width: 2px 0 0 2px;
+}
+
+.db-card::after {
+  bottom: -2px;
+  right: -2px;
+  border-width: 0 2px 2px 0;
+}
+
+/* ---- 统一 Element Plus 组件样式覆盖 ---- */
+.dashboard-container .el-date-editor {
+  --el-input-bg-color: var(--db-card-bg-color);
+  --el-input-text-color: var(--db-title-color);
+  --el-border-color: var(--db-border-color);
+}
+
+.date-picker-container .el-input__inner {
+  --el-input-bg-color: var(--db-card-bg-color);
+  --el-input-text-color: var(--db-title-color);
+  --el-border-color: var(--db-border-color);
+}
+.el-input__wrapper {
+  box-shadow: none;
+}
+/* 核心指标数字的响应式字体 */
+.metric-value {
+  /* 基础字体大小为16px, 加上0.8vw (视口宽度的0.8%) */
+  /* 在1920px屏幕上，大小约为 16 + 15.36 = 31.36px */
+  /* 在4k(3840px)屏幕上，大小约为 16 + 30.72 = 46.72px (但会被最大值限制) */
+  font-size: clamp(24px, calc(16px + 0.8vw), 32px);
+}
+
+/* 核心指标标题的响应式字体 */
+.metric-title {
+  font-size: clamp(12px, calc(10px + 0.2vw), 16px);
+}
+
+/* 核心指标“环比”文字的响应式字体 */
+.metric-change {
+  font-size: clamp(12px, calc(9px + 0.2vw), 14px);
+}
+/* ---- OfferCard 组件内的响应式字体 ---- */
+.info-name {
+  font-size: clamp(16px, calc(10px + 0.2vw), 16px);
+}
+.info-id {
+  font-size: clamp(14px, calc(8px + 0.2vw), 14px);
+}
+.roi-value {
+  font-size: clamp(22px, calc(10px + 0.2vw), 16px);
+}
+.roi-label {
+  font-size: clamp(14px, calc(8px + 0.2vw), 14px);
+}
+.account-tag {
+  font-size: clamp(14px, calc(8px + 0.2vw), 12px);
+}
+.metric-value {
+  font-size: clamp(16px, calc(10px + 0.2vw), 14px);
+}
+.metric-label {
+  font-size: clamp(12px, calc(8px + 0.2vw), 10px);
+}
+/* ---- 使用媒体查询作为补充 ---- */
+/* 当屏幕宽度小于等于1920px时 (针对1080p屏幕) */
+@media (max-width: 1920px) {
+  .metric-value {
+    /* 在1080p屏幕上，强制将字体大小限制在一个更小的值域 */
+    font-size: clamp(24px, calc(16px + 0.8vw), 28px);
+  }
+  .cell {
+    /* 在1080p屏幕上，强制将字体大小限制在一个更小的值域 */
+    font-size: clamp(12px, calc(10px + 0.8vw), 14px);
+  }
+  /* OfferCard 组件内的响应式字体 */
+  .info-name {
+    font-size: clamp(14px, calc(10px + 0.2vw), 16px);
+  }
+  .info-id {
+    font-size: clamp(12px, calc(8px + 0.2vw), 14px);
+  }
+  .roi-value {
+    font-size: clamp(20px, calc(10px + 0.2vw), 16px);
+  }
+  .roi-label {
+    font-size: clamp(12px, calc(8px + 0.2vw), 14px);
+  }
+  .account-tag {
+    font-size: clamp(12px, calc(8px + 0.2vw), 12px);
+  }
+  .metric-value {
+    font-size: clamp(14px, calc(10px + 0.2vw), 14px);
+  }
+  .metric-label {
+    font-size: clamp(10px, calc(8px + 0.2vw), 10px);
+  }
+}
+
+/* 当屏幕宽度小于等于1440px时 (针对笔记本屏幕) */
+@media (max-width: 1900px) {
+  .top-metrics-container {
+    /* 在更小的屏幕上，允许指标换行显示，而不是挤在一起 */
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .metric-item {
+    /* 让每个指标占据更多空间，促成换行 */
+    flex-basis: 45%;
+    margin-bottom: 20px;
+  }
+  .metric-divider {
+    display: none; /* 换行后隐藏分割线 */
+  }
+  /* OfferCard 组件内的响应式字体 */
+  .info-name {
+    font-size: clamp(14px, calc(10px + 0.2vw), 16px);
+  }
+  .info-id {
+    font-size: clamp(12px, calc(8px + 0.2vw), 14px);
+  }
+  .roi-value {
+    font-size: clamp(20px, calc(10px + 0.2vw), 16px);
+  }
+  .roi-label {
+    font-size: clamp(12px, calc(8px + 0.2vw), 14px);
+  }
+  .account-tag {
+    font-size: clamp(12px, calc(8px + 0.2vw), 12px);
+  }
+  .metric-value {
+    font-size: clamp(14px, calc(10px + 0.2vw), 14px);
+  }
+  .metric-label {
+    font-size: clamp(10px, calc(8px + 0.2vw), 10px);
+  }
+  .card-top {
+    zoom: 0.8;
+  }
+  .card-bottom {
+    zoom: 0.9;
+  }
+}

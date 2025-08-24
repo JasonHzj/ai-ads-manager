@@ -2,7 +2,7 @@
   <el-container class="main-layout">
     <el-aside :width="isCollapsed ? '64px' : '200px'" class="aside">
       <div class="aside-logo">
-        <img src="../../public/ai_logo.png" alt="logo" />
+        <img src="/ai_logo.png" alt="logo" />
         <span v-if="!isCollapsed">AI Ads Manager</span>
       </div>
       <el-menu
@@ -11,28 +11,37 @@
         :collapse="isCollapsed"
         router
       >
-        <el-menu-item index="/dashboard">
-          <el-icon><DataLine /></el-icon>
-          <template #title>主控台</template>
-        </el-menu-item>
-        <el-menu-item
-          v-if="userStore.userInfo?.role === 'admin' || userStore.userInfo?.permissions?.can_view_ai_jobs"
-          index="/ad-jobs"
-        >
-          <el-icon><Document /></el-icon>
-          <template #title>AI投放</template>
-        </el-menu-item>
+        <template v-for="route in menuRoutes" :key="route.path">
+          <el-sub-menu
+            v-if="route.children && route.children.length > 0"
+            :index="'/' + route.path"
+          >
+            <template #title>
+              <el-icon v-if="route.meta?.icon && iconMap[route.meta.icon as string]">
+                <component :is="iconMap[route.meta.icon as string]" />
+              </el-icon>
+              <span>{{ route.meta?.title }}</span>
+            </template>
+            <el-menu-item
+              v-for="child in route.children"
+              :key="child.path"
+              :index="'/' + route.path + '/' + child.path"
+            >
+              <el-icon v-if="child.meta?.icon && iconMap[child.meta.icon as string]">
+                <component :is="iconMap[child.meta.icon as string]" />
+              </el-icon>
+              <span>{{ child.meta?.title }}</span>
+            </el-menu-item>
+          </el-sub-menu>
 
-
-        <el-menu-item index="/commission-data">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>佣金中心</span>
-        </el-menu-item>
-        <el-menu-item index="/profile">
-          <el-icon><User /></el-icon>
-          <template #title>个人中心</template>
-        </el-menu-item>
-      </el-menu>
+          <el-menu-item v-else :index="'/' + route.path">
+            <el-icon v-if="route.meta?.icon && iconMap[route.meta.icon as string]">
+              <component :is="iconMap[route.meta.icon as string]" />
+            </el-icon>
+            <template #title>{{ route.meta?.title }}</template>
+          </el-menu-item>
+        </template>
+        </el-menu>
     </el-aside>
     <el-container>
       <el-header class="header">
@@ -41,9 +50,8 @@
           <Expand v-else />
         </el-icon>
         <div class="user-info">
-
           <el-dropdown>
-             <span>欢迎, {{ userStore.userInfo?.username || '用户' }}</span>
+            <span>欢迎, {{ userStore.userInfo?.username || '用户' }}</span>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item @click="handleLogout">退出登录</el-dropdown-item>
@@ -59,23 +67,46 @@
           </transition>
         </router-view>
       </el-main>
-
       <el-footer class="footer">
         <span>AI Ads Manager v1.1.0 ©2025 Created by Jason</span>
       </el-footer>
-      </el-container>
+    </el-container>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue' // 引入 onMounted 和 onUnmounted
-import { Document, DataLine, Fold, Expand, User, DataAnalysis } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted, onUnmounted, computed, shallowRef } from 'vue' // 引入 shallowRef
+import {
+  Document,
+  DataLine,
+  Fold,
+  Expand,
+  User,
+  DataAnalysis,
+  TrendCharts
+} from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { socket } from '@/socket' // 引入 socket 实例
+import { socket } from '@/socket'
+import { useRouter } from 'vue-router'
+
+// ▼▼▼ 核心修正：创建图标映射 ▼▼▼
+const iconMap = shallowRef<Record<string, any>>({
+  Document,
+  DataLine,
+  User,
+  DataAnalysis,
+  TrendCharts
+})
+// ▲▲▲ 修正结束 ▲▲▲
 
 const userStore = useUserStore()
+const router = useRouter()
 const isCollapsed = ref(false)
+
+const menuRoutes = computed(() => {
+  const mainRoute = router.options.routes.find((r) => r.path === '/')
+  return mainRoute?.children?.filter((route) => route.meta && route.meta.title) || []
+})
 
 const toggleSidebar = () => {
   isCollapsed.value = !isCollapsed.value
@@ -85,25 +116,23 @@ const handleLogout = () => {
   userStore.logout()
 }
 
-// 新增：在组件挂载时建立 Socket 连接
 onMounted(() => {
   if (userStore.token && !socket.connected) {
-    console.log('[MainLayout] ==> 正在尝试连接 Socket.IO...');
-    socket.connect();
+    console.log('[MainLayout] ==> 正在尝试连接 Socket.IO...')
+    socket.connect()
   }
+})
 
-});
-
-// 新增：在组件卸载（用户登出）时断开连接，以释放资源
 onUnmounted(() => {
   if (socket.connected) {
-    console.log('[MainLayout] ==> 正在断开 Socket.IO 连接...');
-    socket.disconnect();
+    console.log('[MainLayout] ==> 正在断开 Socket.IO 连接...')
+    socket.disconnect()
   }
-});
+})
 </script>
 
 <style scoped>
+/* 您的样式保持不变 */
 .main-layout {
   height: 100vh;
 }
@@ -136,6 +165,11 @@ onUnmounted(() => {
 .el-menu-item {
   color: #a6adb4;
 }
+:deep(.el-sub-menu__title),
+.el-menu-item {
+  color: #a6adb4;
+}
+:deep(.el-sub-menu__title:hover),
 .el-menu-item:hover {
   background-color: #000c17;
 }
@@ -173,8 +207,6 @@ onUnmounted(() => {
 .fade-leave-to {
   opacity: 0;
 }
-
-/* ▼▼▼ 2. 为 footer 增加样式 ▼▼▼ */
 .footer {
   height: 40px;
   display: flex;
@@ -185,5 +217,4 @@ onUnmounted(() => {
   background-color: #f0f2f5;
   border-top: 1px solid #e0e0e0;
 }
-/* ▲▲▲ 新增结束 ▲▲▲ */
 </style>
