@@ -168,22 +168,22 @@
 }
 
 /* 当屏幕宽度小于等于1440px时 (针对笔记本屏幕) */
-@media (max-width: 1900px) {
-  .top-metrics-container {
-    /* 在更小的屏幕上，允许指标换行显示，而不是挤在一起 */
+/* @media (min-width: 1920px) { */
+/* .top-metrics-container {
+
     flex-wrap: wrap;
     justify-content: center;
   }
   .metric-item {
-    /* 让每个指标占据更多空间，促成换行 */
+
     flex-basis: 45%;
     margin-bottom: 20px;
   }
   .metric-divider {
-    display: none; /* 换行后隐藏分割线 */
-  }
-  /* OfferCard 组件内的响应式字体 */
-  .info-name {
+    display: none;
+  } */
+/* OfferCard 组件内的响应式字体 */
+/* .info-name {
     font-size: clamp(14px, calc(10px + 0.2vw), 16px);
   }
   .info-id {
@@ -203,11 +203,30 @@
   }
   .metric-label {
     font-size: clamp(10px, calc(8px + 0.2vw), 10px);
-  }
-  .card-top {
+  } */
+/* .card-top {
     zoom: 0.8;
   }
   .card-bottom {
+    zoom: 0.9;
+  }
+  .account-card {
+    zoom: 0.8;
+  } */
+/* .main-content {
+    zoom: 0.9;
+  } */
+/* } */
+/* 笔记本（1440 及以下） */
+@media (max-width: 1536px) {
+  .main-content {
+    zoom: 0.8;
+  }
+}
+
+/* 大屏（1920 及以上） */
+@media (min-width: 1920px) and (max-width: 1920px) {
+  .main-content {
     zoom: 0.9;
   }
 }
