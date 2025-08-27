@@ -16,30 +16,31 @@
         </div>
         <div class="drawer-body">
           <el-form ref="formRef" :model="form" :rules="rules" label-position="top" v-loading="isLoading">
+            <!-- 表单内容 -->
             <el-form-item label="广告系列名" prop="campaignName">
               <el-input v-model="form.campaignName" placeholder="请输入广告系列名称" />
             </el-form-item>
             <el-row :gutter="20">
               <el-col :span="12">
-            <el-form-item label="广告系列状态">
-              <el-switch
-                v-model="form.campaignStatus"
-                inline-prompt
-                size="large"
-                style="--el-switch-on-color: #13ce66; --el-switch-off-color: #ff4949"
-                active-text="启用"
-                inactive-text="暂停"
-                active-value="ENABLED"
-                inactive-value="PAUSED"
-              />
-            </el-form-item>
-            </el-col>
-             <el-col :span="12">
-            <el-form-item label="每日预算" prop="budget">
-              <el-input-number v-model="form.budget" :precision="2" :step="1" :min="defaultBudget" />
-              <span style="margin-left: 10px; color: #909399">{{ account?.currency_code }}</span>
-            </el-form-item>
-            </el-col>
+                <el-form-item label="广告系列状态">
+                  <el-switch
+                    v-model="form.campaignStatus"
+                    inline-prompt
+                    size="large"
+                    style="--el-switch-on-color: #13ce66; --el-switch-off-color: #ff4949"
+                    active-text="启用"
+                    inactive-text="暂停"
+                    active-value="ENABLED"
+                    inactive-value="PAUSED"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="每日预算" prop="budget">
+                  <el-input-number v-model="form.budget" :precision="2" :step="1" :min="defaultBudget" />
+                  <span style="margin-left: 10px; color: #909399">{{ account?.currency_code }}</span>
+                </el-form-item>
+              </el-col>
             </el-row>
             <el-row :gutter="20">
               <el-col :span="12">
@@ -83,12 +84,13 @@
           <el-button @click="$emit('close')">取 消</el-button>
           <el-button type="success" @click="openAiHelper">AI 生成广告</el-button>
           <el-button type="primary" @click="handleSaveDraft" :loading="loading.submit">
-             {{ isEditMode ? '保存修改' : '保存草稿' }}
+            {{ isEditMode ? '保存修改' : '保存草稿' }}
           </el-button>
         </div>
       </div>
     </el-drawer>
 
+    <!-- 子组件1: AI 助手抽屉 -->
     <AiHelperDrawer
       :visible="isAiHelperVisible"
       :base-info="{
@@ -101,20 +103,23 @@
       @generation-complete="handleAiGenerationComplete"
     />
 
+    <!-- 子组件2: AI 结果模态框 -->
     <AiResultModal
+      v-if="isAiModalVisible"
       :visible="isAiModalVisible"
       :results="aiGeneratedContent"
       @close="isAiModalVisible = false"
       @confirm="applyAiContent"
       @regenerate="handleRegenerate"
+      @regenerate-item="handleRegenerateItem"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, computed, defineProps, defineEmits } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import type { PropType } from 'vue'
-import { saveDraftAPI, getLanguagesForCountryAPI } from '@/api'
+import { saveDraftAPI, getLanguagesForCountryAPI, rewriteAiAdItemAPI } from '@/api'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import AiHelperDrawer from './AiHelperDrawer.vue'
@@ -122,7 +127,6 @@ import AiResultModal from './AiResultModal.vue'
 import type { AiResults } from '@/types'
 import { useAdOptions } from '@/composables/useAdOptions'
 
-// --- Props, Emits 定义 ---
 interface Account {
   job_id?: number | null;
   sub_account_id: string;
@@ -140,7 +144,6 @@ const emit = defineEmits(['close', 'success'])
 
 const { countries, languages: allLanguages, isLoading } = useAdOptions()
 
-// --- 状态定义 ---
 const form = ref<any>({})
 const loading = reactive({
   languages: false,
@@ -151,7 +154,6 @@ const defaultBudget = ref(1)
 const isEditMode = computed(() => props.mode === 'edit')
 const originalCampaignId = ref<string | null>(null);
 const originalAdGroupId = ref<string | null>(null);
-
 const formRef = ref<FormInstance | null>(null);
 const rules = reactive<FormRules>({
   campaignName: [{ required: true, message: '请输入广告系列名称', trigger: 'blur' }],
@@ -163,7 +165,6 @@ const rules = reactive<FormRules>({
   adLink: [{ required: true, message: '请输入广告链接', trigger: 'blur' }],
 });
 
-// --- 辅助函数：获取一个全新的、干净的表单对象 ---
 const getEmptyForm = () => {
   const budgetMap: { [key: string]: number } = { CNY: 7, USD: 1, HKD: 8 }
   defaultBudget.value = props.account?.currency_code ? budgetMap[props.account.currency_code] : 1;
@@ -175,59 +176,65 @@ const getEmptyForm = () => {
   };
 }
 
-// --- 核心修改：在 initializeForm 函数中统一数据格式 ---
 const initializeForm = (account: Account) => {
   const emptyForm = getEmptyForm();
+  let sourceData: any = {};
+  let dataFound = false;
 
-  if (isEditMode.value) {
-    let sourceData: any = {};
-    if (account.job_payload) {
-      sourceData = typeof account.job_payload === 'string' ? JSON.parse(account.job_payload) : account.job_payload;
-      originalCampaignId.value = sourceData.campaignId || null;
-      originalAdGroupId.value = sourceData.adGroupId || null;
-    }
-    else if (account.campaigns_data && account.campaigns_data.length > 0) {
-      const campaign = account.campaigns_data[0];
-      originalCampaignId.value = campaign.id;
-      originalAdGroupId.value = campaign.adGroups[0]?.id;
-      sourceData = {
-        campaignName: campaign.name,
-        campaignStatus: campaign.status || 'ENABLED',
-        budget: campaign.budget,
-        locations: campaign.locations?.length > 0 ? campaign.locations : [],
-        languages: campaign.languages,
-        keywords: campaign.adGroups[0]?.keywords,
-        keywordMatchType: campaign.adGroups[0]?.keywords[0]?.matchType || 'EXACT',
-        adLink: campaign.adGroups[0]?.ads[0]?.finalUrls[0] || '',
-        headlines: campaign.adGroups[0]?.ads[0]?.headlines,
-        descriptions: campaign.adGroups[0]?.ads[0]?.descriptions,
-      };
-    }
+  if (account.job_payload) {
+    sourceData = typeof account.job_payload === 'string' ? JSON.parse(account.job_payload) : account.job_payload;
+    dataFound = true;
+  }
+  else if (account.campaigns_data && account.campaigns_data.length > 0) {
+    const campaign = account.campaigns_data[0];
+    sourceData = {
+      campaignName: campaign.name,
+      campaignStatus: campaign.status || 'ENABLED',
+      budget: campaign.budget,
+      locations: campaign.locations?.length > 0 ? campaign.locations : [],
+      languages: campaign.languages,
+      keywords: campaign.adGroups[0]?.keywords,
+      keywordMatchType: campaign.adGroups[0]?.keywords[0]?.matchType || 'EXACT',
+      adLink: campaign.adGroups[0]?.ads[0]?.finalUrls[0] || '',
+      headlines: campaign.adGroups[0]?.ads[0]?.headlines,
+      descriptions: campaign.adGroups[0]?.ads[0]?.descriptions,
+    };
+    originalCampaignId.value = campaign.id;
+    originalAdGroupId.value = campaign.adGroups[0]?.id;
+    dataFound = true;
+  }
 
+  if (dataFound) {
     const combinedData = { ...emptyForm, ...sourceData };
-
-    // **核心修正：无论数据源是什么，都将数组格式统一转换为字符串格式**
     if (Array.isArray(combinedData.keywords)) {
-      // 修正：为 kw 添加明确类型
       combinedData.keywords = combinedData.keywords.map((kw: { text: string }) => (kw && kw.text) ? kw.text : kw).join('\n');
     }
     if (Array.isArray(combinedData.headlines)) {
-       // 修正：为 h 添加明确类型
       combinedData.headlines = combinedData.headlines.map((h: any) => (h && h.text && h.text.text) ? h.text.text : (h.text || h)).join('\n');
     }
     if (Array.isArray(combinedData.descriptions)) {
-       // 修正：为 d 添加明确类型
       combinedData.descriptions = combinedData.descriptions.map((d: any) => (d && d.text && d.text.text) ? d.text.text : (d.text || d)).join('\n');
     }
-
     form.value = combinedData;
 
   } else {
     form.value = getEmptyForm();
   }
+
+  if (isEditMode.value) {
+    if (account.job_payload) {
+        originalCampaignId.value = sourceData.campaignId || null;
+        originalAdGroupId.value = sourceData.adGroupId || null;
+    }
+  } else {
+    if (form.value.campaignName) {
+        form.value.campaignName = `${form.value.campaignName}_copy`;
+    }
+    originalCampaignId.value = null;
+    originalAdGroupId.value = null;
+  }
 }
 
-// --- 语言联动逻辑 ---
 const updateAvailableLanguages = async (selectedCountryIds: (string|number)[]) => {
   if (Array.isArray(selectedCountryIds) && selectedCountryIds.length > 1) {
     localLanguages.value = [...allLanguages.value];
@@ -264,36 +271,82 @@ watch(() => props.visible, async (isVisible) => {
   }
 });
 
-// --- AI 联动逻辑 (保持不变) ---
+// --- AI 联动逻辑 ---
 const isAiHelperVisible = ref(false)
 const isAiModalVisible = ref(false)
 const aiGeneratedContent = ref<AiResults>({ headlines: [], descriptions: [] })
+
+const lastAiPayload = ref<any>({});
+
 const openAiHelper = () => { isAiHelperVisible.value = true }
-const handleAiGenerationComplete = (results: AiResults) => {
-  aiGeneratedContent.value = results
+
+const handleAiGenerationComplete = (data: { results: AiResults, payload: any }) => {
+  aiGeneratedContent.value = data.results
+  lastAiPayload.value = data.payload; // 存储请求参数
   isAiHelperVisible.value = false
   isAiModalVisible.value = true
 }
+
 const applyAiContent = (finalContent: { headlines: string[], descriptions: string[] }) => {
-  form.value.headlines = finalContent.headlines.join('\n')
-  form.value.descriptions = finalContent.descriptions.join('\n')
+  if (finalContent.headlines && finalContent.headlines.length > 0) {
+    form.value.headlines = finalContent.headlines.join('\n')
+  }
+  if (finalContent.descriptions && finalContent.descriptions.length > 0) {
+    form.value.descriptions = finalContent.descriptions.join('\n')
+  }
   isAiModalVisible.value = false
   ElMessage.success('文案已成功应用！')
 }
+
 const handleRegenerate = () => {
-  isAiHelperVisible.value = false
+  isAiModalVisible.value = false
   isAiHelperVisible.value = true
 }
 
-// --- 核心修改：使用 Promise 方式重写保存逻辑 ---
+
+const handleRegenerateItem = async (payload: {
+  type: 'headline' | 'description';
+  index: number;
+  original: string;
+}) => {
+  // 增加检查，确保有可用的上下文
+  if (!lastAiPayload.value || !lastAiPayload.value.ai_prompt) {
+    ElMessage.error('无法重写，缺少AI提示词上下文。请先进行一次完整的生成。');
+    return;
+  }
+
+  ElMessage.info('正在请求AI重写，请稍候...')
+  try {
+    const response = await rewriteAiAdItemAPI({
+      textToRewrite: payload.original,
+      itemType: payload.type,
+      context: lastAiPayload.value.ai_prompt,      // 使用存储的提示词
+      model: lastAiPayload.value.model,              // 使用存储的模型
+      target_language: lastAiPayload.value.target_language, // 使用存储的语言
+    });
+
+    const resData = response.data;
+    if (resData && resData.status === 0) {
+      if (payload.type === 'headline') {
+        aiGeneratedContent.value.headlines[payload.index] = resData.data;
+      } else {
+        aiGeneratedContent.value.descriptions[payload.index] = resData.data;
+      }
+      ElMessage.success('重写成功！');
+    } else {
+      ElMessage.error(resData.message || '重写失败');
+    }
+  } catch (error) {
+    console.error('重写失败:', error);
+  }
+};
+
 const handleSaveDraft = async () => {
   if (!formRef.value) return;
 
   try {
-    // 1. 等待表单验证完成，如果失败，它会直接抛出错误并进入catch块
     await formRef.value.validate();
 
-    // --- 如果代码能执行到这里，说明验证已通过 ---
     loading.submit = true;
     try {
       const payload: any = {
@@ -331,7 +384,6 @@ const handleSaveDraft = async () => {
     }
 
   } catch (validationErrors) {
-    // 2. 如果验证失败，在这里提示用户
     ElMessage.error('表单信息不完整，请检查！');
     console.log('表单验证失败:', validationErrors)
   }

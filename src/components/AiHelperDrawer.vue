@@ -20,28 +20,26 @@
           <el-option label="DeepSeek: R1" value="deepseek/deepseek-r1" />
         </el-select>
       </el-form-item>
-
       <el-form-item label="目标国家 (默认联动，可修改)">
-         <el-select v-model="form.target_country" placeholder="选择目标国家" style="width: 100%" filterable>
-            <el-option
-              v-for="item in countryOptions"
-              :key="item.criterion_id"
-              :label="`${item.name_zh} (${item.name})`"
-              :value="item.name"
-            />
-         </el-select>
+        <el-select v-model="form.target_country" placeholder="选择目标国家" style="width: 100%" filterable>
+          <el-option
+            v-for="item in countryOptions"
+            :key="item.criterion_id"
+            :label="`${item.name_zh} (${item.name})`"
+            :value="item.name"
+          />
+        </el-select>
       </el-form-item>
       <el-form-item label="目标语言 (默认联动，可修改)">
-         <el-select v-model="form.target_language" placeholder="选择生成语言" style="width: 100%" filterable>
-            <el-option
-              v-for="item in languageOptions"
-              :key="item.criterion_id"
-              :label="`${item.name_zh} (${item.name})`"
-              :value="item.name"
-            />
-         </el-select>
+        <el-select v-model="form.target_language" placeholder="选择生成语言" style="width: 100%" filterable>
+          <el-option
+            v-for="item in languageOptions"
+            :key="item.criterion_id"
+            :label="`${item.name_zh} (${item.name})`"
+            :value="item.name"
+          />
+        </el-select>
       </el-form-item>
-
       <el-form-item label="AI提示词">
         <el-input
           v-model="form.ai_prompt"
@@ -50,7 +48,6 @@
           placeholder="请输入核心产品、卖点、目标用户等信息，帮助AI更好地创作。"
         />
       </el-form-item>
-
       <el-divider content-position="left">AI参考文案 (选填)</el-divider>
       <el-form-item label="参考标题 (每行一个)">
         <el-input
@@ -77,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, defineProps, defineEmits } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { generateAIContentAPI } from '@/api'
 import { ElMessage } from 'element-plus'
 import { useAdOptions } from '@/composables/useAdOptions'
@@ -97,7 +94,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'generation-complete'])
 
-const { countries: countryOptions, languages: languageOptions } = useAdOptions();
+const { countries: countryOptions, languages: languageOptions } = useAdOptions()
 const loading = ref(false)
 
 const form = reactive({
@@ -105,7 +102,6 @@ const form = reactive({
   target_language: '',
   target_country: '',
   ai_prompt: '',
-  // 新增的字段
   example_headlines: '',
   example_descriptions: '',
 })
@@ -113,14 +109,14 @@ const form = reactive({
 watch(() => props.visible, (isVisible) => {
   if (isVisible) {
     if (props.baseInfo.locations.length > 0 && countryOptions.value.length > 0) {
-        const firstLocationId = props.baseInfo.locations[0];
-        const country = countryOptions.value.find(c => c.criterion_id === firstLocationId);
-        form.target_country = country ? country.name : '';
+      const firstLocationId = props.baseInfo.locations[0];
+      const country = countryOptions.value.find(c => c.criterion_id === firstLocationId);
+      form.target_country = country ? country.name : '';
     }
-     if (props.baseInfo.languages.length > 0 && languageOptions.value.length > 0) {
-        const firstLanguageId = props.baseInfo.languages[0];
-        const lang = languageOptions.value.find(l => l.criterion_id === firstLanguageId);
-        form.target_language = lang ? lang.name : '';
+    if (props.baseInfo.languages.length > 0 && languageOptions.value.length > 0) {
+      const firstLanguageId = props.baseInfo.languages[0];
+      const lang = languageOptions.value.find(l => l.criterion_id === firstLanguageId);
+      form.target_language = lang ? lang.name : '';
     }
   }
 })
@@ -135,8 +131,6 @@ const handleGenerate = async () => {
     const payload = {
       ad_link: props.baseInfo.adLink,
       keywords: props.baseInfo.keywords,
-
-      // 从当前AI抽屉的form中获取所有AI相关参数
       model: form.model,
       target_language: form.target_language,
       target_country: form.target_country,
@@ -145,12 +139,16 @@ const handleGenerate = async () => {
       example_descriptions: form.example_descriptions.split('\n').filter(Boolean),
     }
 
-    const res = await generateAIContentAPI(payload)
+    const response = await generateAIContentAPI(payload)
+    const resData = response.data
 
-    if (res.data && res.data.status === 0) {
-      emit('generation-complete', res.data.data)
+    if (resData && resData.status === 0) {
+      // =======================================================================
+      // 核心改动：发出信号时，同时传递结果和生成该结果的请求参数
+      // =======================================================================
+      emit('generation-complete', { results: resData.data, payload: payload })
     } else {
-      ElMessage.error(res.data.message || 'AI生成失败')
+      ElMessage.error(resData.message || 'AI生成失败')
     }
   } catch (error) {
     console.error('AI生成时发生错误:', error)

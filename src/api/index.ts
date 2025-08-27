@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL, // baseURL 现在只包含域名和端口
-  timeout: 100000,
+  timeout: 1000000,
 })
 
 // 请求拦截器
@@ -51,6 +51,14 @@ export const requestBatchDeleteAPI = (jobIds: number[]) =>
 export const getTransactionsAPI = () => apiClient.get('/api/platforms/transactions')
 export const triggerInitialSyncAPI = (accountId: number, startDate: string) =>
   apiClient.post('/api/platforms/linkbux/initial-sync', { accountId, startDate })
+
+export const rewriteAiAdItemAPI = (data: {
+  textToRewrite: string
+  itemType: 'headline' | 'description'
+  context: string // 核心创意
+  model?: string
+  target_language?: string
+}) => apiClient.post('/api/ai/rewrite-item', data)
 
 // =======================================================================
 //                看板相关 API (Dashboard APIs)

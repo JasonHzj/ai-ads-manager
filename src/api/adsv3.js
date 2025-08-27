@@ -7,7 +7,6 @@
  * 2. 数据同步器: 将所有广告账户的当前状态同步回您的网页应用数据库。
  * =======================================================================
  */
-
 function main() {
   // --- 配置区域 ---
   // 重要: 请将下面的地址和密钥替换为您自己的真实信息。
@@ -17,35 +16,12 @@ function main() {
   const managerAccount = AdsApp.currentAccount();
   const managerAccountId = managerAccount.getCustomerId();
   const managerAccountName = managerAccount.getName();
-  // ▼▼▼ 核心修改：注释掉持续运行的逻辑，改为单次执行模式，方便测试 ▼▼▼
 
-  // /* -- (测试时注释掉)
-  // --- 持续运行逻辑 ---
-  // const SAFE_TIME_LIMIT_SECONDS = 5 * 60;
-  // const POLLING_INTERVAL_SECONDS = 60;
-
-  // Logger.log('脚本开始持续运行模式...');
-
-  // while (AdsApp.getExecutionInfo().getRemainingTime() > SAFE_TIME_LIMIT_SECONDS) {
-  //   processPendingJobs(YOUR_BASE_URL, YOUR_SECRET_KEY);
-
-  //   Logger.log(`本轮任务检查完毕，休眠 ${POLLING_INTERVAL_SECONDS} 秒...`);
-  //   Utilities.sleep(POLLING_INTERVAL_SECONDS * 1000);
-  // }
-
-  // Logger.log('即将达到时间上限，执行最后一次数据同步...');
-  // syncAllAccounts(YOUR_BASE_URL, YOUR_SECRET_KEY);
-
-  // Logger.log('脚本运行周期结束。');
-  // */ // -- (测试时注释掉)
-
-  // --- 测试时使用的单次执行逻辑 ---
-  Logger.log('脚本以单次测试模式运行...');
+  // --- 用于测试的单次执行逻辑 ---
+  Logger.log('脚本以单次执行模式运行...');
   processPendingJobs(YOUR_BASE_URL, YOUR_SECRET_KEY);
   syncAllAccounts(YOUR_BASE_URL, YOUR_SECRET_KEY, managerAccountId, managerAccountName);
-  Logger.log('单次测试运行结束。');
-
-  // ▲▲▲ 修改结束 ▲▲▲
+  Logger.log('单次执行运行结束。');
 }
 
 
@@ -85,9 +61,10 @@ function processPendingJobs(baseUrl, secretKey) {
     for (var i = 0; i < jobs.length; i++) {
       var job = jobs[i];
       var subAccountId = job.sub_account_id;
+      var payload; // 在这里声明 payload，以便 catch 块可以访问
 
       try {
-        var payload = job.payload;
+        payload = job.payload;
         if (typeof payload === 'string') {
           payload = JSON.parse(payload);
         }
@@ -99,49 +76,111 @@ function processPendingJobs(baseUrl, secretKey) {
         if (job.action_type === 'CREATE') {
           handleCreateAction(payload, subAccountId);
         } else if (job.action_type === 'UPDATE') {
-          // ▼▼▼ 核心修改：在这里添加判断逻辑 ▼▼▼
           if (!payload.campaignId || !payload.adGroupId) {
-            // 如果是更新任务，但又没有ID，就按创建流程处理
             Logger.log('任务 ' + job.id +
               ' 类型为 "UPDATE"，但缺少 campaignId 或 adGroupId。将按 "CREATE" (新建) 流程处理。');
             handleCreateAction(payload, subAccountId);
           } else {
-            // 如果ID存在，正常执行更新流程
             handleUpdateAction(payload);
           }
-          // ▲▲▲ 修改结束 ▲▲▲
         } else if (job.action_type === 'DELETE') {
-          // ▼▼▼ 新增：处理删除操作 ▼▼▼
           handleDeleteAction(payload);
-          // ▲▲▲ 新增结束 ▲▲▲
         }
 
         reportStatus(statusUpdateUrl, secretKey, job.id, 'SUCCESS', '操作成功完成。');
 
       } catch (e) {
-        Logger.log('错误：执行任务 ID ' + job.id + ' 失败: ' + e.toString());
-        reportStatus(statusUpdateUrl, secretKey, job.id, 'FAILED', e.toString());
+        // =======================================================================
+        // 核心改动: 带有清理功能的增强型错误处理
+        // =======================================================================
+        var originalError = '执行任务 ID ' + job.id + ' 失败: ' + e.toString();
+        Logger.log(originalError);
+
+        var finalErrorMessage = originalError;
+
+        // 如果失败的任务是 CREATE 或 UPDATE，则尝试清理任何部分创建的实体。
+        if ((job.action_type === 'CREATE' || job.action_type === 'UPDATE') && payload) {
+          try {
+            Logger.log('正在尝试清理部分创建的实体...');
+            var cleanupMessage = handleCreationFailureAndCleanup(payload, subAccountId);
+            finalErrorMessage += '; ' + cleanupMessage;
+          } catch (cleanupError) {
+            var cleanupErrorMessage = '严重错误: 清理过程也失败了: ' + cleanupError.toString();
+            Logger.log(cleanupErrorMessage);
+            finalErrorMessage += '; ' + cleanupErrorMessage;
+          }
+        }
+        reportStatus(statusUpdateUrl, secretKey, job.id, 'FAILED', finalErrorMessage);
+        // =======================================================================
+        // 改动结束
+        // =======================================================================
       }
     }
   } catch (e) {
-    Logger.log('错误：获取或处理任务时失败: ' + e.toString());
+    Logger.log('错误: 获取或处理任务时失败: ' + e.toString());
   }
 }
 
+// =======================================================================
+// 新增辅助函数: 失败时进行清理
+// =======================================================================
 /**
- * 辅助函数：验证并创建自适应搜索广告
+ * 尝试查找并移除在失败操作中可能被部分创建的广告系列。
+ * @param {object} payload 包含广告系列名称的原始任务数据。
+ * @param {string} subAccountId 操作失败的子账户ID。
+ * @return {string} 一条表示清理操作结果的消息。
+ */
+function handleCreationFailureAndCleanup(payload, subAccountId) {
+  var campaignNameToFind = payload.campaignName;
+  if (!campaignNameToFind) {
+    return "清理已跳过: 任务数据中未找到广告系列名称。";
+  }
+
+  // 我们搜索以目标名称开头的广告系列，因为创建函数可能会为重名系列添加随机后缀。
+  var escapedCampaignName = campaignNameToFind.replace(/"/g, '\\"');
+  var campaignIterator = AdsApp.campaigns()
+    .withCondition(`campaign.name CONTAINS "${escapedCampaignName}"`)
+    .get();
+
+  if (!campaignIterator.hasNext()) {
+    return "清理检查完成: 未发现需要移除的部分创建的广告系列。";
+  }
+
+  var campaignsRemovedCount = 0;
+  while (campaignIterator.hasNext()) {
+    var campaign = campaignIterator.next();
+    // =======================================================================
+    // 核心改动：增加一道 JavaScript startsWith 判断，确保精确匹配
+    // =======================================================================
+    if (campaign.getName().startsWith(campaignNameToFind)) {
+      Logger.log(`发现部分创建的广告系列: "${campaign.getName()}"。正在移除...`);
+      campaign.remove(); // 移除广告系列会同时移除其下的广告组、广告和关键字。
+      campaignsRemovedCount++;
+    }
+  }
+
+  var message = `清理成功: 移除了 ${campaignsRemovedCount} 个部分创建的广告系列。`;
+  Logger.log(message);
+  return message;
+}
+// =======================================================================
+// 新增函数结束
+// =======================================================================
+
+
+/**
+ * 辅助函数: 验证并创建自适应搜索广告
  */
 function validateAndCreateRsa(adGroup, payload) {
-  // 验证广告素材是否符合最低要求
   if (!payload.adLink || payload.adLink.trim() === '') {
-    throw new Error('无法创建广告，因为 payload 中的 adLink (最终链接) 为空。');
+    throw new Error('无法创建广告: 任务数据中的 adLink (最终链接) 为空。');
   }
   if (!payload.headlines || !Array.isArray(payload.headlines) || payload.headlines.length < 3) {
-    throw new Error('无法创建广告，因为 payload 中的 headlines (标题) 数量少于3个。');
+    throw new Error('无法创建广告: 任务数据中的 headlines (标题) 数量少于3个。');
   }
   if (!payload.descriptions || !Array.isArray(payload.descriptions) || payload.descriptions.length <
     2) {
-    throw new Error('无法创建广告，因为 payload 中的 descriptions (描述) 数量少于2个。');
+    throw new Error('无法创建广告: 任务数据中的 descriptions (描述) 数量少于2个。');
   }
 
   Logger.log('正在创建新的自适应搜索广告...');
@@ -160,7 +199,7 @@ function validateAndCreateRsa(adGroup, payload) {
 
 
 /**
- * 辅助函数：处理新建操作
+ * 辅助函数: 处理新建操作
  */
 function handleCreateAction(payload, subAccountId) {
   let finalCampaignName = payload.campaignName;
@@ -293,7 +332,7 @@ function handleCreateAction(payload, subAccountId) {
   for (var j = 0; j < mutateResult.length; j++) {
     if (!mutateResult[j].isSuccessful()) {
       hasErrors = true;
-      errorMessages.push(`Operation ${j} failed with error: ${JSON.stringify(mutateResult[j])}`);
+      errorMessages.push(`操作 ${j} 失败，错误: ${JSON.stringify(mutateResult[j])}`);
     }
   }
   if (hasErrors) {
@@ -304,11 +343,11 @@ function handleCreateAction(payload, subAccountId) {
 }
 
 /**
- * 辅助函数：处理更新操作 (差异化比对逻辑)
+ * 辅助函数: 处理更新操作
  */
 function handleUpdateAction(payload) {
   if (!payload.campaignId || !payload.adGroupId) {
-    throw new Error("更新任务的 payload 格式不正确，缺少 campaignId 或 adGroupId 字段。");
+    throw new Error("更新任务的数据格式不正确，缺少 campaignId 或 adGroupId 字段。");
   }
 
   const campaign = AdsApp.campaigns().withIds([payload.campaignId]).get().next();
@@ -378,7 +417,7 @@ function handleUpdateAction(payload) {
           }
         });
       } else {
-        Logger.log(`警告：无效的地理位置 ID "${id}"。ID 必须是一个数字。已跳过此项。`);
+        Logger.log(`警告: 无效的地理位置 ID "${id}"。ID 必须是一个数字。已跳过此项。`);
       }
     }
   });
@@ -415,7 +454,7 @@ function handleUpdateAction(payload) {
           }
         });
       } else {
-        Logger.log(`警告：无效的语言 ID "${id}"。ID 必须是一个数字。已跳过此项。`);
+        Logger.log(`警告: 无效的语言 ID "${id}"。ID 必须是一个数字。已跳过此项。`);
       }
     }
   });
@@ -478,14 +517,13 @@ function handleUpdateAction(payload) {
 
 
 /**
- * ▼▼▼ 核心修正：新增处理删除操作的辅助函数 ▼▼▼
+ * 辅助函数: 处理删除操作
  */
 function handleDeleteAction(payload) {
   if (!payload.campaignId) {
-    throw new Error("删除任务的 payload 格式不正确，缺少 campaignId 字段。");
+    throw new Error("删除任务的数据格式不正确，缺少 campaignId 字段。");
   }
 
-  // 使用 ID 查找广告系列
   const campaignIterator = AdsApp.campaigns()
     .withIds([payload.campaignId])
     .get();
@@ -495,7 +533,6 @@ function handleDeleteAction(payload) {
     const campaignName = campaign.getName();
     const campaignResourceName = campaign.getResourceName();
 
-    // 使用 mutate 操作来移除广告系列
     const mutateResult = AdsApp.mutate({
       campaignOperation: {
         remove: campaignResourceName
@@ -508,11 +545,9 @@ function handleDeleteAction(payload) {
       throw new Error(`移除广告系列失败: ${mutateResult.getError()}`);
     }
   } else {
-    // 如果广告系列已经被删除了，也视为成功，避免重复报错
-    Logger.log(`警告：找不到 ID 为 ${payload.campaignId} 的广告系列，可能已被删除。`);
+    Logger.log(`警告: 找不到 ID 为 ${payload.campaignId} 的广告系列，可能已被删除。`);
   }
 }
-// ▲▲▲ 修正结束 ▲▲▲
 
 
 
@@ -539,7 +574,9 @@ function reportStatus(url, secretKey, jobId, status, message) {
 }
 
 
-// ▼▼▼ 新增：重试机制辅助函数 ▼▼▼
+/**
+ * 辅助函数: 将一个操作包装在重试循环中。
+ */
 function retry(fn, description, maxRetries = 3, delaySeconds = 10) {
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -555,9 +592,8 @@ function retry(fn, description, maxRetries = 3, delaySeconds = 10) {
     }
   }
 }
-// ▲▲▲ 新增结束 ▲▲▲
 
-// 通用：把 AdsApp 实体的状态统一成 'ENABLED' | 'PAUSED' | 'REMOVED' | 'UNKNOWN'
+// 辅助函数: 获取一个实体的标准化状态标签。
 function getStatusLabel(entity) {
   try {
     if (typeof entity.isRemoved === 'function' && entity.isRemoved()) return 'REMOVED';
@@ -584,15 +620,12 @@ function syncAllAccounts(baseUrl, secretKey, managerAccountId, managerAccountNam
     var account = accountIterator.next();
 
     try {
-      // 切换账户并延时
       AdsManagerApp.select(account);
-      Utilities.sleep(1000); // 等待 1 秒，避免切换账户后数据未就绪
+      Utilities.sleep(1000); // 等待1秒，避免切换账户后数据未就绪
 
       var currencyCode = account.getCurrencyCode();
-
       var campaigns = [];
 
-      // 全局 retry 包裹广告系列读取
       var campaignIterator = retry(function () {
         return AdsApp.campaigns().withCondition("campaign.status != 'REMOVED'").get();
       }, "广告系列");
@@ -700,7 +733,7 @@ function syncAllAccounts(baseUrl, secretKey, managerAccountId, managerAccountNam
       });
 
     } catch (e) {
-      Logger.log(`账户 ${account.getCustomerId()} 读取失败: ${e.toString()}. 已跳过此账户。`);
+      Logger.log(`账户 ${account.getCustomerId()} 读取失败: ${e.toString()}。已跳过此账户。`);
     }
   }
 
@@ -724,22 +757,4 @@ function syncAllAccounts(baseUrl, secretKey, managerAccountId, managerAccountNam
   }
 
   Logger.log('--- 账户数据同步完成。 ---');
-}
-
-/**
- * retry 封装函数，带描述、最大重试次数、延时
- */
-function retry(fn, description, maxRetries = 5, delaySeconds = 2) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return fn();
-    } catch (e) {
-      if (i < maxRetries - 1) {
-        Logger.log(`读取 ${description} 时出错，重试 ${i + 1}/${maxRetries}，错误: ${e}`);
-        Utilities.sleep(delaySeconds * 1000);
-      } else {
-        throw e;
-      }
-    }
-  }
 }
