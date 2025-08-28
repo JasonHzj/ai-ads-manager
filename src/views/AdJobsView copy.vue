@@ -629,7 +629,7 @@ const getLocations = (campaignsData: Campaign[] | null): string => {
 
 const formatTime = (time: string | null) => {
   if (!time) return '--'
-  return time   // 后端已经格式化好了，前端不用再动
+  return new Date(time).toLocaleString()
 }
 const filteredAccounts = computed(() => {
   let result = allAccounts.value
