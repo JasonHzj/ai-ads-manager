@@ -3,8 +3,10 @@
     <div class="card-header">
       <span class="account-name">{{ currentData.account_name || '广告详情' }}</span>
       <div class="top-metrics">
-        <span>ADS消费: <span class="value">{{ formatCurrency(currentData.spend) }}</span></span>
-        <span class="roi">ROI: <span class="value">{{ currentData.roi.toFixed(2) }}</span></span>
+        <template v-if="currentData.spend !== undefined && currentData.roi !== undefined">
+          <span>ADS消费: <span class="value">{{ formatCurrency(currentData.spend) }}</span></span>
+          <span class="roi">ROI: <span class="value">{{ currentData.roi.toFixed(2) }}</span></span>
+        </template>
       </div>
     </div>
 
@@ -45,6 +47,7 @@ import MetricBox from './MetricBox.vue'
 import SummaryChart from './SummaryChart.vue'
 import { ElMessage } from 'element-plus'
 
+// --- 1. 新增 platform prop ---
 const props = defineProps({
   initialData: {
     type: Object as PropType<RightPanelData>,
@@ -52,6 +55,10 @@ const props = defineProps({
   },
   dateRange: {
     type: Object as PropType<[string, string] | null>,
+    required: true
+  },
+  platform: {
+    type: String,
     required: true
   }
 })
@@ -73,11 +80,12 @@ const handleAdClick = async (ad: ActiveAd) => {
   adDetailData.value = null
   selectedAdId.value = ad.ad_id
   try {
-    const response = await getRightPanelAdDetailAPI(props.dateRange[0], props.dateRange[1], ad.ad_id)
+    // --- 2. 在API调用中增加 platform 参数 ---
+    const response = await getRightPanelAdDetailAPI(props.dateRange[0], props.dateRange[1], ad.ad_id, props.platform)
     adDetailData.value = response.data.data
   } catch (error) {
     ElMessage.error(`获取广告 ${ad.ad_name} 的详情失败`)
-    selectedAdId.value = null
+    selectedAdId.value = null // 失败时重置状态
   }
 }
 
@@ -91,7 +99,7 @@ const formatCurrency = (value: number) => {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 2
-  }).format(value)
+  }).format(value || 0) // 增加 fallback 确保 value 不是 undefined
 }
 </script>
 

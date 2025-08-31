@@ -111,17 +111,25 @@ export interface TopOffersData {
 
 // --- API 函数 ---
 
-export const getTopLeftMetricsAPI = (startDate: string, endDate: string) =>
-  apiClient.get('/api/dashboard/top-left-metrics', { params: { startDate, endDate } })
+export const getTopLeftMetricsAPI = (startDate: string, endDate: string, platform: string) =>
+  apiClient.get<{ data: TopLeftMetricsData }>('/api/dashboard/top-left-metrics', {
+    params: { startDate, endDate, platform },
+  })
 
-export const getDailyTrendsChartAPI = (startDate: string, endDate: string) =>
-  apiClient.get('/api/dashboard/daily-trends-chart', { params: { startDate, endDate } })
+export const getDailyTrendsChartAPI = (startDate: string, endDate: string, platform: string) =>
+  apiClient.get<{ data: DailyTrendsChartData }>('/api/dashboard/daily-trends-chart', {
+    params: { startDate, endDate, platform },
+  })
 
-export const getCumulativeStatsAPI = () =>
-  apiClient.get<{ data: CumulativeStatsData }>('/api/dashboard/cumulative-stats')
+export const getCumulativeStatsAPI = (platform: string) =>
+  apiClient.get<{ data: CumulativeStatsData }>('/api/dashboard/cumulative-stats', {
+    params: { platform },
+  })
 
-export const getTopOffersForAccountAPI = (accountId: number) =>
-  apiClient.get<{ data: TopOffersData }>(`/api/dashboard/top-offers/${accountId}`)
+export const getTopOffersForAccountAPI = (accountId: number, platform: string) =>
+  apiClient.get<{ data: TopOffersData }>(`/api/dashboard/top-offers/${accountId}`, {
+    params: { platform },
+  })
 
 // 单个Offer卡片的数据结构
 export interface OfferData {
@@ -199,24 +207,25 @@ export const getDashboardOfferListAPI = (params: {
   startDate?: string
   endDate?: string
   adId?: string
+  platform: string
 }) => apiClient.get<{ data: DashboardData }>('/api/dashboard/offer-list', { params })
 
-// ▼▼▼ 新增：搜索API函数 ▼▼▼
-export const searchAdsAPI = (keyword: string) =>
-  apiClient.get<{ data: AdSearchResult[] }>(`/api/dashboard/search-ads`, { params: { keyword } })
-
-/**
- * 获取右侧面板的所有账户汇总数据
- */
-export const getRightPanelSummaryAPI = (startDate: string, endDate: string) =>
-  apiClient.get<{ data: RightPanelData[] }>('/api/dashboard/right-panel/summary', {
-    params: { startDate, endDate },
+export const searchAdsAPI = (keyword: string, platform: string) =>
+  apiClient.get<{ data: AdSearchResult[] }>(`/api/dashboard/search-ads`, {
+    params: { keyword, platform },
   })
 
-/**
- * 获取右侧面板单个广告的详细数据
- */
-export const getRightPanelAdDetailAPI = (startDate: string, endDate: string, adId: number) =>
+export const getRightPanelSummaryAPI = (startDate: string, endDate: string, platform: string) =>
+  apiClient.get<{ data: RightPanelData[] }>('/api/dashboard/right-panel/summary', {
+    params: { startDate, endDate, platform },
+  })
+
+export const getRightPanelAdDetailAPI = (
+  startDate: string,
+  endDate: string,
+  adId: number,
+  platform: string,
+) =>
   apiClient.get<{ data: RightPanelData }>('/api/dashboard/right-panel/ad-detail', {
-    params: { startDate, endDate, adId },
+    params: { startDate, endDate, adId, platform },
   })

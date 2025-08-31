@@ -80,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, shallowRef, reactive, onBeforeUnmount } from 'vue'
+import { ref, onMounted, shallowRef, reactive, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import {
   getCumulativeStatsAPI,
@@ -92,6 +92,12 @@ import {
 import { ElMessage } from 'element-plus'
 import type { TableColumnCtx } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
+
+// --- 1. 新增 platform prop ---
+const props = defineProps<{
+  platform?: string
+}>()
+
 interface SummaryData {
   approved: number
   pending: number
@@ -100,11 +106,10 @@ interface SummaryData {
 const loading = ref(true)
 const donutChartRef = ref<HTMLElement | null>(null)
 const donutChartInstance = shallowRef<echarts.ECharts | null>(null)
-
 const accountSummary = ref<AccountSummary[]>([])
 const donutChartData = ref<DonutChartData>({ total_amount: 0, distribution: [] })
 const popoverStateMap = reactive<Map<number, { loading: boolean; data: TopOffersData | null }>>(new Map())
-const visiblePopoverId = ref<number | null>(null) // 新增：控制哪个popover可见
+const visiblePopoverId = ref<number | null>(null)
 
 const getPopoverState = (accountId: number) => {
   if (!popoverStateMap.has(accountId)) {
@@ -113,24 +118,23 @@ const getPopoverState = (accountId: number) => {
   return popoverStateMap.get(accountId)!
 }
 
-// ▼▼▼ 核心修正：函数名改为 handleRowClick ▼▼▼
 const handleRowClick = async (row: AccountSummary) => {
-  // 点击同一行，如果popover已显示，则隐藏
   if (visiblePopoverId.value === row.platform_account_id) {
     visiblePopoverId.value = null
     return
   }
 
   const state = getPopoverState(row.platform_account_id)
-  visiblePopoverId.value = row.platform_account_id // 立即显示popover
+  visiblePopoverId.value = row.platform_account_id
 
-  if (state.loading || state.data !== null) {
+  if (state.loading || state.data !== null || !props.platform) {
     return
   }
 
   try {
     state.loading = true
-    const response = await getTopOffersForAccountAPI(row.platform_account_id)
+    // --- 2. 在API调用中增加 platform 参数 ---
+    const response = await getTopOffersForAccountAPI(row.platform_account_id, props.platform)
     state.data = response.data.data
   } catch (error) {
     console.error('获取Top Offer数据失败:', error)
@@ -140,19 +144,17 @@ const handleRowClick = async (row: AccountSummary) => {
   }
 }
 
-// 点击外部区域关闭popover的逻辑
+// --- (其余辅助函数 handleOutsideClick, isPopoverDataEmpty, getSummaries, formatCurrency, setDonutChartOption 保持不变) ---
 const handleClickOutside = (event: MouseEvent) => {
   const popover = document.querySelector('.el-popover.el-popper')
   if (popover && !popover.contains(event.target as Node)) {
     visiblePopoverId.value = null
   }
 }
-
 const isPopoverDataEmpty = (data: TopOffersData | null | undefined) => {
   if (!data) return true
   return !data.approved?.length && !data.pending?.length && !data.rejected?.length
 }
-
 const getSummaries = (param: {
   columns: TableColumnCtx<AccountSummary>[]
   data: AccountSummary[]
@@ -174,28 +176,21 @@ const getSummaries = (param: {
           return prev
         }
       }, 0)
-      // 使用 formatCurrency 函数来格式化合计金额
       sums[index] = formatCurrency(sum)
     } else {
       sums[index] = 'N/A'
     }
   })
-
   return sums
 }
-
-
 const formatCurrency = (value: string | number) => {
   const num = typeof value === 'string' ? parseFloat(value) : value
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD',maximumFractionDigits: 0, // <-- 在这里也加上
-    minimumFractionDigits: 0 }).format(num)
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD',maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(num || 0)
 }
-
 const setDonutChartOption = (data: DonutChartData) => {
     if (!donutChartInstance.value) return;
     const option = {
         title: {
-
             subtext: formatCurrency(data.total_amount),
             text: '累计金额',
             left: 'center',
@@ -218,10 +213,14 @@ const setDonutChartOption = (data: DonutChartData) => {
     donutChartInstance.value.setOption(option);
 }
 
+// --- 3. 修改 fetchData 函数 ---
 const fetchData = async () => {
+  // 增加对 platform 的校验
+  if (!props.platform) return
   loading.value = true
   try {
-    const response = await getCumulativeStatsAPI()
+    // --- 4. 在API调用中增加 platform 参数 ---
+    const response = await getCumulativeStatsAPI(props.platform)
     const statsData = response.data.data
     accountSummary.value = statsData.account_summary
     donutChartData.value = statsData.donut_chart
@@ -239,10 +238,17 @@ const fetchData = async () => {
   }
 }
 
+// --- 5. 新增 watch 监听 platform 变化 ---
+watch(() => props.platform, (newPlatform) => {
+  if (newPlatform) {
+    fetchData();
+  }
+}, { immediate: true }) // immediate: true 可以在组件创建时立即执行一次
+
 onMounted(() => {
   if (donutChartRef.value) {
     donutChartInstance.value = echarts.init(donutChartRef.value)
-    fetchData()
+    // onMounted 不再直接调用 fetchData，交由 watch 的 immediate 来处理
   }
   document.addEventListener('click', handleClickOutside, true)
 })
@@ -251,6 +257,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside, true)
 })
 </script>
+
 
 <style>
 /* Popover的非scoped样式，用于覆盖element-plus的默认样式 */

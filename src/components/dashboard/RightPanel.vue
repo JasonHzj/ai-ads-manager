@@ -6,6 +6,7 @@
         :key="accountData.account_id"
         :initial-data="accountData"
         :date-range="dateRange"
+        :platform="platform"
       />
     </div>
     <el-empty v-else-if="!loading" description="无账户数据" />
@@ -18,22 +19,27 @@ import AccountCard from './AccountCard.vue'
 import { getRightPanelSummaryAPI, type RightPanelData } from '@/api'
 import { ElMessage } from 'element-plus'
 
+// --- 1. 新增 platform prop ---
 const props = defineProps<{
-  dateRange: [string, string] | null
+  dateRange: [string, string] | null,
+  platform: string
 }>()
 
 const loading = ref(true)
 const panelData = ref<RightPanelData[]>([])
 
 const fetchSummaryData = async () => {
-  if (!props.dateRange) return;
+  // 增加对 platform 的校验
+  if (!props.dateRange || !props.platform) return;
   loading.value = true;
   try {
-    const response = await getRightPanelSummaryAPI(props.dateRange[0], props.dateRange[1])
+    // --- 2. 在API调用中增加 platform 参数 ---
+    const response = await getRightPanelSummaryAPI(props.dateRange[0], props.dateRange[1], props.platform)
+    // --- 3. 修正数据提取逻辑 ---
+    // 因为拦截器已处理 .data，所以直接使用 response.data
     panelData.value = response.data.data
   } catch (error) {
-    // 当请求超时时，Axios会进入catch块，我们可以在这里清空数据并提示用户
-    panelData.value = [] // 清空旧数据
+    panelData.value = []
     ElMessage.error('获取右侧面板数据超时或失败')
     console.error(error)
   } finally {
@@ -41,15 +47,15 @@ const fetchSummaryData = async () => {
   }
 }
 
-// ▼▼▼ 核心修正：优化 watch 监听器 ▼▼▼
-watch(() => props.dateRange, (newDateRange) => {
-  // 只有当 newDateRange 是一个有效的、包含两个日期的数组时，才执行查询
-  // 这可以防止在选择过程中触发不必要的API调用
-  if (newDateRange && newDateRange.length === 2 && newDateRange[0] && newDateRange[1]) {
+// --- 4. 监听所有 prop 的变化 ---
+watch(() => [props.dateRange, props.platform], (newVal) => {
+  const [newDateRange, newPlatform] = newVal;
+  if (newDateRange && newDateRange.length === 2 && newDateRange[0] && newDateRange[1] && newPlatform) {
     fetchSummaryData();
   }
-}, { immediate: true }) // immediate: true 保证了页面首次加载时会立即执行一次查询
+}, { immediate: true, deep: true })
 </script>
+
 
 <style scoped>
 .right-panel-container {

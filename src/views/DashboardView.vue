@@ -15,7 +15,7 @@
             @change="handleDateChange"
           />
         </div>
-        <LeftPanel :date-range="dateRange" />
+        <LeftPanel :date-range="dateRange" :platform="platform" />
       </el-col>
 
       <el-col :span="8">
@@ -30,7 +30,6 @@
               @clear="clearSearch"
               class="ad-search-input"
             >
-
             </el-autocomplete>
           </div>
           <div v-if="dashboardData && dashboardData.offers.length > 0" class="offer-cards-wrapper">
@@ -46,25 +45,29 @@
       </el-col>
 
       <el-col :span="8">
-        <RightPanel :date-range="dateRange" />
+        <RightPanel :date-range="dateRange" :platform="platform" />
       </el-col>
     </el-row>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import LeftPanel from '@/components/dashboard/LeftPanel.vue'
 import OfferCard from '@/components/dashboard/OfferCard.vue'
+import RightPanel from '@/components/dashboard/RightPanel.vue'
 import { getDashboardOfferListAPI, searchAdsAPI, type DashboardData, type AdSearchResult } from '@/api'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
 import '@/styles/dashboard.css'
-import { Search } from '@element-plus/icons-vue'
-import RightPanel from '@/components/dashboard/RightPanel.vue';
+
+// --- 1. 新增 platform 状态 ---
+// 这个 ref 将作为整个看板的数据源平台
+// 未来您可以增加一个下拉菜单来改变这个值
+const platform = ref('Linkbux')
 
 const loading = ref(true)
-const dateRange = ref<[string, string] | null>([ // 允许为null，增强健壮性
+const dateRange = ref<[string, string] | null>([
   dayjs().startOf('month').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD')
 ])
@@ -73,11 +76,13 @@ const emptyText = ref('所选日期范围内无数据')
 const searchKeyword = ref('')
 const isSearchMode = ref(false)
 
+// --- 2. 修改搜索函数，增加 platform 参数 ---
 const querySearchAsync = async (queryString: string, cb: (arg: any) => void) => {
   if (!queryString) return cb([]);
   try {
-    const response = await searchAdsAPI(queryString)
-    cb(response.data.data)
+    // 调用 API 时传入平台名称
+    const response = await searchAdsAPI(queryString, platform.value)
+    cb(response.data.data || [])
   } catch (error) {
     console.error('搜索失败:', error)
     cb([])
@@ -86,7 +91,7 @@ const querySearchAsync = async (queryString: string, cb: (arg: any) => void) => 
 
 const handleSearchSelect = (item: AdSearchResult) => {
   isSearchMode.value = true
-  dateRange.value = null // 清空并禁用日期选择器
+  // dateRange.value = null
   emptyText.value = '正在加载搜索结果...'
   fetchDashboardData({ adId: item.platform_ad_id })
 }
@@ -97,30 +102,31 @@ const clearSearch = () => {
     dayjs().startOf('month').format('YYYY-MM-DD'),
     dayjs().format('YYYY-MM-DD')
   ]
-  fetchDashboardData({ dateRange: dateRange.value })
+  // fetchDashboardData 将在 watch 中被自动调用
 }
 
 const handleDateChange = (newDateRange: [string, string] | null) => {
   if (newDateRange) {
     isSearchMode.value = false
     searchKeyword.value = ''
-    fetchDashboardData({ dateRange: newDateRange })
+    // fetchDashboardData 将在 watch 中被自动调用
   }
 }
 
+// --- 3. 修改主数据获取函数，增加 platform 参数 ---
 const fetchDashboardData = async (params: { dateRange?: [string, string] | null; adId?: string }) => {
   loading.value = true
   try {
-    let apiParams: { startDate?: string; endDate?: string; adId?: string } = {};
+    let apiParams: { startDate?: string; endDate?: string; adId?: string; platform: string } = {
+        platform: platform.value // 始终包含 platform 参数
+    };
 
     if (params.adId) {
-      apiParams = { adId: params.adId };
-    }
-    else if (params.dateRange && params.dateRange.length === 2) {
-      apiParams = { startDate: params.dateRange[0], endDate: params.dateRange[1] };
-    }
-    else {
-      // 如果参数无效（例如dateRange是null），安全退出，不发送请求
+      apiParams.adId = params.adId;
+    } else if (params.dateRange && params.dateRange.length === 2) {
+      apiParams.startDate = params.dateRange[0];
+      apiParams.endDate = params.dateRange[1];
+    } else {
       loading.value = false;
       return;
     }
@@ -139,12 +145,17 @@ const fetchDashboardData = async (params: { dateRange?: [string, string] | null;
   }
 }
 
-onMounted(() => {
-  if(dateRange.value){
-    fetchDashboardData({ dateRange: dateRange.value })
-  }
-})
+// --- 4. 修改 watch，使其也监听 platform 的变化 ---
+watch([dateRange, platform], () => {
+    // 当日期范围或平台变化时，重新获取中间列表的数据
+    // 确保不在搜索模式下才因日期变化而刷新
+    if (!isSearchMode.value && dateRange.value) {
+        fetchDashboardData({ dateRange: dateRange.value })
+    }
+}, { immediate: true }) // immediate: true 保证了页面首次加载时会立即执行一次
 
+
+// --- 快捷方式 (与您原有代码一致) ---
 const shortcuts = [
     {
     text: '本周',
@@ -196,6 +207,7 @@ const shortcuts = [
   }
 ]
 </script>
+
 
 
 <style scoped>
