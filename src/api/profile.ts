@@ -57,3 +57,12 @@ export const getPlatformAccountsAPI = (): Promise<any> => {
 export const savePlatformAccountsAPI = (accounts: PlatformAccount[]): Promise<any> => {
   return apiClient.post('/user/platform-accounts', { accounts })
 }
+
+/**
+ * (---- 这是新增的函数 ----)
+ * 删除指定ID的平台账户
+ */
+export const deletePlatformAccountAPI = (id: number): Promise<any> => {
+  // 这会向后端发送一个 DELETE 请求，例如：DELETE /api/user/platform-accounts/123
+  return apiClient.delete(`/user/platform-accounts/${id}`)
+}

@@ -7,7 +7,7 @@ import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox, ElDatePicker } from 'element-plus'
 import { Plus, Minus, Promotion } from '@element-plus/icons-vue'
 import { socket } from '@/socket'
-import { getPlatformAccountsAPI, savePlatformAccountsAPI, type PlatformAccount } from '@/api/profile'
+import { getPlatformAccountsAPI, savePlatformAccountsAPI, type PlatformAccount,deletePlatformAccountAPI } from '@/api/profile'
 import { triggerInitialSyncAPI } from '@/api/index'
 
 const userStore = useUserStore()
@@ -37,9 +37,45 @@ const addAccountRow = () => {
   platformAccounts.value.push({ platform_name: 'Linkbux', account_name: '', api_token: '' })
 }
 
-const removeAccountRow = (index: number) => {
-  if (platformAccounts.value.length > 1) {
+const removeAccountRow = async (index: number) => {
+  // 先从数组中获取要操作的账户对象
+  const accountToRemove = platformAccounts.value[index]
+
+  // 情况一：如果账户没有 id，说明是还未保存的新行，直接从界面移除即可
+  if (!accountToRemove.id) {
+    if (platformAccounts.value.length > 1) {
+      platformAccounts.value.splice(index, 1)
+    }
+    return // 操作结束
+  }
+
+  // 情况二：账户有 id，说明是已保存在数据库的记录，需要弹窗确认并调用API
+  try {
+    await ElMessageBox.confirm(
+      `确定要永久删除账户 [${accountToRemove.account_name}] 吗？此操作不可撤销。`,
+      '删除确认',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 用户点击了“确定删除”，调用删除API
+    await deletePlatformAccountAPI(accountToRemove.id)
+
+    // API调用成功后，显示成功消息
+    ElMessage.success('账户已成功删除！')
+
+    // 最后，从前端列表中移除这一行
     platformAccounts.value.splice(index, 1)
+
+  } catch (error) {
+    // 如果用户点击了“取消”，或者API调用失败，则进入这里
+    if (error !== 'cancel') {
+      // 如果不是用户主动取消，而是API报错，则提示用户
+      ElMessage.error('删除失败，请稍后重试。')
+    }
   }
 }
 
@@ -57,7 +93,7 @@ const handleSaveAccounts = async () => {
     const res = await savePlatformAccountsAPI(validAccounts)
     if (res.data.status === 0) {
       ElMessage.success('账户信息保存成功！')
-      await fetchPlatformAccounts()
+
     }
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '保存失败，请重试。')

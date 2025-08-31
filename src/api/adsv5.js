@@ -2,14 +2,14 @@
  * =======================================================================
  * 主函数 - 脚本执行的入口
  *
- * 这个脚本现在按顺序执行两个主要任务:
- * 1. 任务处理器: 从您的网页应用数据库中获取待处理的任务并执行。
- * 2. 数据同步器: 将所有广告账户的当前状态同步回您的网页应用数据库。
+ * v6 版修正:
+ * - 修复了 syncAllAccounts 函数中批量获取当日性能数据时，
+ * 在经理账户层级查询指标的错误。
+ * - 改为在遍历子账户的循环体内，逐个获取其当日性能。
  * =======================================================================
  */
 function main() {
   // --- 配置区域 ---
-  // 重要: 请将下面的地址和密钥替换为您自己的真实信息。
   var YOUR_BASE_URL = 'https://adwords.7055.net/api';
   var YOUR_SECRET_KEY = '07efb477b36c36b5055c2630578ee4eeeb6cfb1e33f89b3c2eb7cb319a5baf0d';
 
@@ -17,27 +17,213 @@ function main() {
   const managerAccountId = managerAccount.getCustomerId();
   const managerAccountName = managerAccount.getName();
 
-  // --- 用于测试的单次执行逻辑 ---
-  Logger.log('脚本以单次执行模式运行...');
+  Logger.log('脚本以高频/实时模式运行 (修正版 v6)...');
   processPendingJobs(YOUR_BASE_URL, YOUR_SECRET_KEY);
-  syncAllAccounts(YOUR_BASE_URL, YOUR_SECRET_KEY, managerAccountId, managerAccountName);
-  Logger.log('单次执行运行结束。');
+  syncAllAccountsWithTodayPerformance(YOUR_BASE_URL, YOUR_SECRET_KEY, managerAccountId,
+    managerAccountName);
+  Logger.log('高频/实时模式运行结束。');
 }
 
 
 /**
  * =======================================================================
- * 模块一: 任务处理器
+ * 模块二: 数据同步器 (修正版)
  *
- * 从数据库获取待处理的任务，在Google Ads中执行它们，然后将执行结果报告回去。
+ * 修正内容:
+ * - 移除了在循环外批量获取性能数据的错误逻辑。
+ * - 在循环体内，进入每个子账户后，单独为该账户查询当日性能数据。
  * =======================================================================
  */
+function syncAllAccountsWithTodayPerformance(baseUrl, secretKey, managerAccountId,
+  managerAccountName) {
+  Logger.log('--- 模块二: 开始同步账户数据及当日性能... ---');
+
+  var postUrl = baseUrl + '/ads/receive-data';
+  var accountsData = [];
+  var accountIterator = AdsManagerApp.accounts().get();
+
+  while (accountIterator.hasNext()) {
+    var account = accountIterator.next();
+    var subAccountId = account.getCustomerId();
+
+    try {
+      AdsManagerApp.select(account);
+      Utilities.sleep(500);
+
+      // 1. 在子账户上下文中获取当日性能数据
+      var performanceData = {
+        impressions: 0,
+        clicks: 0,
+        ctr: 0.0,
+        cpc: 0.0,
+        cost_micros: 0
+      };
+      try {
+        var report = AdsApp.report(
+          'SELECT metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.cost_micros ' +
+          'FROM customer ' +
+          'WHERE segments.date DURING TODAY');
+
+        var rows = report.rows();
+        if (rows.hasNext()) {
+          var row = rows.next();
+          performanceData = {
+            impressions: parseInt(row['metrics.impressions'], 10),
+            clicks: parseInt(row['metrics.clicks'], 10),
+            ctr: parseFloat(row['metrics.ctr']),
+            cpc: parseFloat(row['metrics.average_cpc']) / 1000000,
+            cost_micros: parseInt(row['metrics.cost_micros'], 10)
+          };
+        }
+      } catch (perfError) {
+        Logger.log('警告: 获取账户 ' + subAccountId + ' 的当日性能数据失败: ' + perfError.toString());
+        // 如果性能数据获取失败，我们仍然继续同步账户结构，只是性能数据为0
+      }
+
+
+      // 2. 获取账户结构 (这部分逻辑不变)
+      var currencyCode = account.getCurrencyCode();
+      var campaigns = [];
+      var campaignIterator = retry(function () {
+        return AdsApp.campaigns().withCondition("campaign.status != 'REMOVED'").get();
+      }, "广告系列");
+      while (campaignIterator.hasNext()) {
+        var campaign = campaignIterator.next();
+        var locations = retry(function () {
+          return campaign.targeting().targetedLocations().get();
+        }, `广告系列 "${campaign.getName()}" 的地理位置`);
+        var languages = retry(function () {
+          return campaign.targeting().languages().get();
+        }, `广告系列 "${campaign.getName()}" 的语言`);
+        var locationIds = [];
+        while (locations.hasNext()) {
+          locationIds.push(locations.next().getId());
+        }
+        var languageIds = [];
+        while (languages.hasNext()) {
+          languageIds.push(languages.next().getId());
+        }
+        var adGroups = [];
+        var adGroupIterator = retry(function () {
+          return campaign.adGroups().withCondition("ad_group.status != 'REMOVED'").get();
+        }, `广告系列 "${campaign.getName()}" 的广告组`);
+        while (adGroupIterator.hasNext()) {
+          var adGroup = adGroupIterator.next();
+          var keywords = [];
+          var keywordIterator = retry(function () {
+            return adGroup.keywords().withCondition("ad_group_criterion.status != 'REMOVED'")
+              .get();
+          }, `广告组 "${adGroup.getName()}" 的关键字`);
+          while (keywordIterator.hasNext()) {
+            var keyword = keywordIterator.next();
+            keywords.push({
+              text: keyword.getText(),
+              matchType: keyword.getMatchType(),
+              status: getStatusLabel(keyword)
+            });
+          }
+          var ads = [];
+          var adIterator = retry(function () {
+            return adGroup.ads().withCondition("ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'")
+              .withCondition("ad_group_ad.status != 'REMOVED'").get();
+          }, `广告组 "${adGroup.getName()}" 的广告`);
+          while (adIterator.hasNext()) {
+            var ad = adIterator.next();
+            var rsa = ad.asType().responsiveSearchAd();
+            var headlines = rsa.getHeadlines() ? rsa.getHeadlines().map(function (h) {
+              return {
+                text: h
+              };
+            }) : [];
+            var descriptions = rsa.getDescriptions() ? rsa.getDescriptions().map(function (d) {
+              return {
+                text: d
+              };
+            }) : [];
+            var finalUrl = ad.urls().getFinalUrl();
+            ads.push({
+              finalUrls: finalUrl ? [finalUrl] : [],
+              headlines: headlines,
+              descriptions: descriptions
+            });
+          }
+          adGroups.push({
+            id: adGroup.getId(),
+            name: adGroup.getName(),
+            status: getStatusLabel(adGroup),
+            keywords: keywords,
+            ads: ads
+          });
+        }
+        campaigns.push({
+          id: campaign.getId(),
+          name: campaign.getName(),
+          status: getStatusLabel(campaign),
+          budget: campaign.getBudget().getAmount(),
+          biddingStrategy: campaign.getBiddingStrategyType(),
+          advertisingChannel: campaign.getAdvertisingChannelType(),
+          locations: locationIds,
+          languages: languageIds,
+          urlOptions: {
+            trackingTemplate: campaign.urls().getTrackingTemplate()
+          },
+          adGroups: adGroups
+        });
+      }
+
+      // 3. 构建最终数据对象
+      accountsData.push({
+        manager_id: managerAccountId,
+        manager_name: managerAccountName,
+        sub_account_id: subAccountId,
+        sub_account_name: account.getName(),
+        currency_code: currencyCode,
+        campaigns_data: campaigns,
+        impressions: performanceData.impressions,
+        clicks: performanceData.clicks,
+        ctr: performanceData.ctr,
+        cpc: performanceData.cpc,
+        cost_micros: performanceData.cost_micros
+      });
+
+    } catch (e) {
+      Logger.log(`账户 ${subAccountId} 结构读取失败: ${e.toString()}。已跳过此账户。`);
+    }
+  }
+
+  // 4. 上传数据 (这部分逻辑不变)
+  if (accountsData.length > 0) {
+    var payload = JSON.stringify(accountsData);
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: payload,
+      headers: {
+        'X-API-Key': secretKey
+      },
+      muteHttpExceptions: true
+    };
+    try {
+      var response = UrlFetchApp.fetch(postUrl, options);
+      Logger.log('数据同步服务器响应代码: %s', response.getResponseCode());
+    } catch (e) {
+      Logger.log('数据同步失败: ' + e.toString());
+    }
+  } else {
+    Logger.log('没有发现任何可同步的账户数据。');
+  }
+
+  Logger.log('--- 账户数据及当日性能同步完成。 ---');
+}
+
+
+// =======================================================================
+// 以下是您原有的任务处理和辅助函数 (无需任何修改)
+// =======================================================================
 function processPendingJobs(baseUrl, secretKey) {
   Logger.log('--- 模块一: 正在检查待处理任务... ---');
-
   var jobsUrl = baseUrl + '/jobs/pending';
   var statusUpdateUrl = baseUrl + '/jobs/update-status';
-
   try {
     var options = {
       'method': 'get',
@@ -50,25 +236,20 @@ function processPendingJobs(baseUrl, secretKey) {
     var response = UrlFetchApp.fetch(jobsUrl, options);
     var responseText = response.getContentText();
     var jobs = JSON.parse(responseText);
-
     if (!Array.isArray(jobs) || jobs.length === 0) {
       Logger.log('没有发现待处理的任务。');
       return;
     }
-
     Logger.log('发现了 ' + jobs.length + ' 个待处理任务。开始执行...');
-
     for (var i = 0; i < jobs.length; i++) {
       var job = jobs[i];
       var subAccountId = job.sub_account_id;
-      var payload; // 在这里声明 payload，以便 catch 块可以访问
-
+      var payload;
       try {
         payload = job.payload;
         if (typeof payload === 'string') {
           payload = JSON.parse(payload);
         }
-
         var cid = String(subAccountId).replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{4})/,
           "$1-$2-$3");
         var accIt = AdsManagerApp.accounts().withIds([cid]).get();
@@ -78,7 +259,6 @@ function processPendingJobs(baseUrl, secretKey) {
         var account = accIt.next();
         AdsManagerApp.select(account);
         Logger.log('正在账户 "' + account.getName() + '" (' + subAccountId + ') 上执行任务 ID: ' + job.id);
-
         if (job.action_type === 'CREATE') {
           handleCreateAction(payload, subAccountId);
         } else if (job.action_type === 'UPDATE') {
@@ -92,19 +272,11 @@ function processPendingJobs(baseUrl, secretKey) {
         } else if (job.action_type === 'DELETE') {
           handleDeleteAction(payload);
         }
-
         reportStatus(statusUpdateUrl, secretKey, job.id, 'SUCCESS', '操作成功完成。');
-
       } catch (e) {
-        // =======================================================================
-        // 核心改动: 带有清理功能的增强型错误处理
-        // =======================================================================
         var originalError = '执行任务 ID ' + job.id + ' 失败: ' + e.toString();
         Logger.log(originalError);
-
         var finalErrorMessage = originalError;
-
-        // 如果失败的任务是 CREATE 或 UPDATE，则尝试清理任何部分创建的实体。
         if ((job.action_type === 'CREATE' || job.action_type === 'UPDATE') && payload) {
           try {
             Logger.log('正在尝试清理部分创建的实体...');
@@ -117,9 +289,6 @@ function processPendingJobs(baseUrl, secretKey) {
           }
         }
         reportStatus(statusUpdateUrl, secretKey, job.id, 'FAILED', finalErrorMessage);
-        // =======================================================================
-        // 改动结束
-        // =======================================================================
       }
     }
   } catch (e) {
@@ -127,56 +296,31 @@ function processPendingJobs(baseUrl, secretKey) {
   }
 }
 
-// =======================================================================
-// 新增辅助函数: 失败时进行清理
-// =======================================================================
-/**
- * 尝试查找并移除在失败操作中可能被部分创建的广告系列。
- * @param {object} payload 包含广告系列名称的原始任务数据。
- * @param {string} subAccountId 操作失败的子账户ID。
- * @return {string} 一条表示清理操作结果的消息。
- */
 function handleCreationFailureAndCleanup(payload, subAccountId) {
   var campaignNameToFind = payload.campaignName;
   if (!campaignNameToFind) {
     return "清理已跳过: 任务数据中未找到广告系列名称。";
   }
-
-  // 我们搜索以目标名称开头的广告系列，因为创建函数可能会为重名系列添加随机后缀。
   var escapedCampaignName = campaignNameToFind.replace(/"/g, '\\"');
-  var campaignIterator = AdsApp.campaigns()
-    .withCondition(`campaign.name STARTS_WITH_IGNORE_CASE "${escapedCampaignName}"`)
-    .get();
-
+  var campaignIterator = AdsApp.campaigns().withCondition(
+    `campaign.name STARTS_WITH_IGNORE_CASE "${escapedCampaignName}"`).get();
   if (!campaignIterator.hasNext()) {
     return "清理检查完成: 未发现需要移除的部分创建的广告系列。";
   }
-
   var campaignsRemovedCount = 0;
   while (campaignIterator.hasNext()) {
     var campaign = campaignIterator.next();
-    // =======================================================================
-    // 核心改动：增加一道 JavaScript startsWith 判断，确保精确匹配
-    // =======================================================================
     if (campaign.getName().startsWith(campaignNameToFind)) {
       Logger.log(`发现部分创建的广告系列: "${campaign.getName()}"。正在移除...`);
-      campaign.remove(); // 移除广告系列会同时移除其下的广告组、广告和关键字。
+      campaign.remove();
       campaignsRemovedCount++;
     }
   }
-
   var message = `清理成功: 移除了 ${campaignsRemovedCount} 个部分创建的广告系列。`;
   Logger.log(message);
   return message;
 }
-// =======================================================================
-// 新增函数结束
-// =======================================================================
 
-
-/**
- * 辅助函数: 验证并创建自适应搜索广告
- */
 function validateAndCreateRsa(adGroup, payload) {
   if (!payload.adLink || payload.adLink.trim() === '') {
     throw new Error('无法创建广告: 任务数据中的 adLink (最终链接) 为空。');
@@ -188,14 +332,9 @@ function validateAndCreateRsa(adGroup, payload) {
     2) {
     throw new Error('无法创建广告: 任务数据中的 descriptions (描述) 数量少于2个。');
   }
-
   Logger.log('正在创建新的自适应搜索广告...');
-  const adOperation = adGroup.newAd().responsiveSearchAdBuilder()
-    .withHeadlines(payload.headlines)
-    .withDescriptions(payload.descriptions)
-    .withFinalUrl(payload.adLink)
-    .build();
-
+  const adOperation = adGroup.newAd().responsiveSearchAdBuilder().withHeadlines(payload.headlines)
+    .withDescriptions(payload.descriptions).withFinalUrl(payload.adLink).build();
   if (!adOperation.isSuccessful()) {
     throw new Error('创建新广告失败: ' + adOperation.getErrors().join(', '));
   }
@@ -203,23 +342,16 @@ function validateAndCreateRsa(adGroup, payload) {
   return adOperation.getResult();
 }
 
-
-/**
- * 辅助函数: 处理新建操作
- */
 function handleCreateAction(payload, subAccountId) {
   let finalCampaignName = payload.campaignName;
   const escapedCampaignName = payload.campaignName.replace(/"/g, '\\"');
-  const existingCampaigns = AdsApp.campaigns()
-    .withCondition(`campaign.name = "${escapedCampaignName}"`)
-    .get();
-
+  const existingCampaigns = AdsApp.campaigns().withCondition(
+    `campaign.name = "${escapedCampaignName}"`).get();
   if (existingCampaigns.hasNext()) {
     Logger.log(`广告系列名称 "${payload.campaignName}" 已存在。正在附加随机数...`);
     finalCampaignName = payload.campaignName + '_' + Math.floor(Math.random() * 10000);
     Logger.log(`新的广告系列名称为: "${finalCampaignName}"`);
   }
-
   var customerId = subAccountId.replace(/-/g, '');
   var budgetResourceName = `customers/${customerId}/campaignBudgets/-1`;
   var campaignResourceName = `customers/${customerId}/campaigns/-2`;
@@ -227,7 +359,6 @@ function handleCreateAction(payload, subAccountId) {
   var mutateOperations = [];
   var sanitizedCampaignName = finalCampaignName.replace(/[^a-zA-Z0-9_ ]/g, "");
   var budgetName = `Budget_${sanitizedCampaignName}_${new Date().getTime()}`;
-
   mutateOperations.push({
     campaignBudgetOperation: {
       create: {
@@ -255,7 +386,6 @@ function handleCreateAction(payload, subAccountId) {
       },
     },
   });
-
   if (payload.locations && Array.isArray(payload.locations)) {
     payload.locations.forEach(function (locationId) {
       mutateOperations.push({
@@ -331,7 +461,6 @@ function handleCreateAction(payload, subAccountId) {
       },
     },
   });
-
   var mutateResult = AdsApp.mutateAll(mutateOperations);
   var hasErrors = false;
   var errorMessages = [];
@@ -348,35 +477,24 @@ function handleCreateAction(payload, subAccountId) {
   }
 }
 
-/**
- * 辅助函数: 处理更新操作
- */
 function handleUpdateAction(payload) {
   if (!payload.campaignId || !payload.adGroupId) {
     throw new Error("更新任务的数据格式不正确，缺少 campaignId 或 adGroupId 字段。");
   }
-
   const cIt = AdsApp.campaigns().withIds([payload.campaignId]).get();
   if (!cIt.hasNext()) throw new Error(`找不到 ID 为 ${payload.campaignId} 的广告系列。`);
   const campaign = cIt.next();
-
   const gIt = AdsApp.adGroups().withIds([payload.adGroupId]).get();
   if (!gIt.hasNext()) throw new Error(`找不到 ID 为 ${payload.adGroupId} 的广告组。`);
   const adGroup = gIt.next();
-
   if (!campaign) throw new Error(`找不到 ID 为 ${payload.campaignId} 的广告系列。`);
   if (!adGroup) throw new Error(`找不到 ID 为 ${payload.adGroupId} 的广告组。`);
-
   Logger.log(`开始同步广告系列 "${campaign.getName()}"`);
-
-  // 1. 同步预算
   const currentBudget = campaign.getBudget().getAmount();
   if (currentBudget !== payload.budget) {
     Logger.log(`预算不一致。当前: ${currentBudget}, 目标: ${payload.budget}。正在更新...`);
     campaign.getBudget().setAmount(payload.budget);
   }
-
-  // 2. 同步关键字
   const existingKeywords = new Set();
   const keywordIterator = adGroup.keywords().get();
   while (keywordIterator.hasNext()) {
@@ -399,20 +517,16 @@ function handleUpdateAction(payload) {
       }
     }
   });
-
-  // 3 & 4. 同步地理位置和语言
   const customerId = AdsApp.currentAccount().getCustomerId().replace(/-/g, '');
   const campaignId = campaign.getId();
   const campaignResourceName = campaign.getResourceName();
   const criteriaMutateOperations = [];
-
   const existingLocationIds = new Set();
   const locationIterator = campaign.targeting().targetedLocations().get();
   while (locationIterator.hasNext()) {
     existingLocationIds.add(locationIterator.next().getId());
   }
   const desiredLocationIds = new Set(payload.locations || []);
-
   desiredLocationIds.forEach(id => {
     if (!existingLocationIds.has(id)) {
       if (typeof id === 'number' && isFinite(id)) {
@@ -442,14 +556,12 @@ function handleUpdateAction(payload) {
       });
     }
   });
-
   const existingLanguageIds = new Set();
   const languageIterator = campaign.targeting().languages().get();
   while (languageIterator.hasNext()) {
     existingLanguageIds.add(languageIterator.next().getId());
   }
   const desiredLanguageIds = new Set(payload.languages || []);
-
   desiredLanguageIds.forEach(id => {
     if (!existingLanguageIds.has(id)) {
       if (typeof id === 'number' && isFinite(id)) {
@@ -479,28 +591,22 @@ function handleUpdateAction(payload) {
       });
     }
   });
-
   if (criteriaMutateOperations.length > 0) {
     AdsApp.mutateAll(criteriaMutateOperations);
     Logger.log('地理位置和语言定位已同步。');
   }
-
-  // 5. 同步自适应搜索广告 (仅在内容变化时替换)
   const adIterator = adGroup.ads().withCondition("ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'")
     .get();
   if (adIterator.hasNext()) {
     const existingAdObject = adIterator.next();
     const existingAdRsa = existingAdObject.asType().responsiveSearchAd();
-
     const existingHeadlines = new Set(existingAdRsa.getHeadlines().map(h => h.text));
     const existingDescriptions = new Set(existingAdRsa.getDescriptions().map(d => d.text));
     const desiredHeadlines = new Set(payload.headlines);
     const desiredDescriptions = new Set(payload.descriptions);
-
     let adsAreDifferent = false;
-    if (existingAdObject.urls().getFinalUrl() !== payload.adLink ||
-      existingHeadlines.size !== desiredHeadlines.size ||
-      existingDescriptions.size !== desiredDescriptions.size) {
+    if (existingAdObject.urls().getFinalUrl() !== payload.adLink || existingHeadlines.size !==
+      desiredHeadlines.size || existingDescriptions.size !== desiredDescriptions.size) {
       adsAreDifferent = true;
     } else {
       desiredHeadlines.forEach(h => {
@@ -510,7 +616,6 @@ function handleUpdateAction(payload) {
         if (!existingDescriptions.has(d)) adsAreDifferent = true;
       });
     }
-
     if (adsAreDifferent) {
       Logger.log('广告内容已更改，正在替换广告...');
       validateAndCreateRsa(adGroup, payload);
@@ -522,34 +627,23 @@ function handleUpdateAction(payload) {
   } else {
     validateAndCreateRsa(adGroup, payload);
   }
-
   Logger.log('广告系列同步完成。');
 }
 
-
-/**
- * 辅助函数: 处理删除操作
- */
 function handleDeleteAction(payload) {
   if (!payload.campaignId) {
     throw new Error("删除任务的数据格式不正确，缺少 campaignId 字段。");
   }
-
-  const campaignIterator = AdsApp.campaigns()
-    .withIds([payload.campaignId])
-    .get();
-
+  const campaignIterator = AdsApp.campaigns().withIds([payload.campaignId]).get();
   if (campaignIterator.hasNext()) {
     const campaign = campaignIterator.next();
     const campaignName = campaign.getName();
     const campaignResourceName = campaign.getResourceName();
-
     const mutateResult = AdsApp.mutate({
       campaignOperation: {
         remove: campaignResourceName
       }
     });
-
     if (mutateResult.isSuccessful()) {
       Logger.log(`广告系列 "${campaignName}" (ID: ${payload.campaignId}) 已成功移除。`);
     } else {
@@ -560,11 +654,6 @@ function handleDeleteAction(payload) {
   }
 }
 
-
-
-/**
- * 辅助函数: 将任务的执行状态报告回服务器。
- */
 function reportStatus(url, secretKey, jobId, status, message) {
   var payload = JSON.stringify({
     jobId: jobId,
@@ -584,10 +673,6 @@ function reportStatus(url, secretKey, jobId, status, message) {
   Logger.log('已为任务 ID ' + jobId + ' 报告状态: ' + status);
 }
 
-
-/**
- * 辅助函数: 将一个操作包装在重试循环中。
- */
 function retry(fn, description, maxRetries = 3, delaySeconds = 10) {
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -604,7 +689,6 @@ function retry(fn, description, maxRetries = 3, delaySeconds = 10) {
   }
 }
 
-// 辅助函数: 获取一个实体的标准化状态标签。
 function getStatusLabel(entity) {
   try {
     if (typeof entity.isRemoved === 'function' && entity.isRemoved()) return 'REMOVED';
@@ -612,160 +696,4 @@ function getStatusLabel(entity) {
     if (typeof entity.isEnabled === 'function' && entity.isEnabled()) return 'ENABLED';
   } catch (e) {}
   return 'UNKNOWN';
-}
-
-/**
- * =======================================================================
- * 模块二: 数据同步器
- * =======================================================================
- */
-function syncAllAccounts(baseUrl, secretKey, managerAccountId, managerAccountName) {
-  Logger.log('--- 模块二: 开始同步账户数据... ---');
-
-  var postUrl = baseUrl + '/ads/receive-data';
-  var accountsData = [];
-
-  var accountIterator = AdsManagerApp.accounts().get();
-
-  while (accountIterator.hasNext()) {
-    var account = accountIterator.next();
-
-    try {
-      AdsManagerApp.select(account);
-      Utilities.sleep(1000); // 等待1秒，避免切换账户后数据未就绪
-
-      var currencyCode = account.getCurrencyCode();
-      var campaigns = [];
-
-      var campaignIterator = retry(function () {
-        return AdsApp.campaigns().withCondition("campaign.status != 'REMOVED'").get();
-      }, "广告系列");
-
-      while (campaignIterator.hasNext()) {
-        var campaign = campaignIterator.next();
-
-        var locations = retry(function () {
-          return campaign.targeting().targetedLocations().get();
-        }, `广告系列 "${campaign.getName()}" 的地理位置`);
-
-        var languages = retry(function () {
-          return campaign.targeting().languages().get();
-        }, `广告系列 "${campaign.getName()}" 的语言`);
-
-        var locationIds = [];
-        while (locations.hasNext()) {
-          locationIds.push(locations.next().getId());
-        }
-        var languageIds = [];
-        while (languages.hasNext()) {
-          languageIds.push(languages.next().getId());
-        }
-
-        var adGroups = [];
-        var adGroupIterator = retry(function () {
-          return campaign.adGroups().withCondition("ad_group.status != 'REMOVED'").get();
-        }, `广告系列 "${campaign.getName()}" 的广告组`);
-
-        while (adGroupIterator.hasNext()) {
-          var adGroup = adGroupIterator.next();
-
-          var keywords = [];
-          var keywordIterator = retry(function () {
-            return adGroup.keywords().withCondition("ad_group_criterion.status != 'REMOVED'")
-              .get();
-          }, `广告组 "${adGroup.getName()}" 的关键字`);
-          while (keywordIterator.hasNext()) {
-            var keyword = keywordIterator.next();
-            keywords.push({
-              text: keyword.getText(),
-              matchType: keyword.getMatchType(),
-              status: getStatusLabel(keyword)
-            });
-          }
-
-          var ads = [];
-          var adIterator = retry(function () {
-            return adGroup.ads().withCondition("ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'")
-              .withCondition("ad_group_ad.status != 'REMOVED'").get();
-          }, `广告组 "${adGroup.getName()}" 的广告`);
-          while (adIterator.hasNext()) {
-            var ad = adIterator.next();
-            var rsa = ad.asType().responsiveSearchAd();
-            var headlines = rsa.getHeadlines() ? rsa.getHeadlines().map(function (h) {
-              return {
-                text: h
-              };
-            }) : [];
-            var descriptions = rsa.getDescriptions() ? rsa.getDescriptions().map(function (d) {
-              return {
-                text: d
-              };
-            }) : [];
-            var finalUrl = ad.urls().getFinalUrl();
-            ads.push({
-              finalUrls: finalUrl ? [finalUrl] : [],
-              headlines: headlines,
-              descriptions: descriptions
-            });
-          }
-
-          adGroups.push({
-            id: adGroup.getId(),
-            name: adGroup.getName(),
-            status: getStatusLabel(adGroup),
-            keywords: keywords,
-            ads: ads
-          });
-        }
-
-        campaigns.push({
-          id: campaign.getId(),
-          name: campaign.getName(),
-          status: getStatusLabel(campaign),
-          budget: campaign.getBudget().getAmount(),
-          biddingStrategy: campaign.getBiddingStrategyType(),
-          advertisingChannel: campaign.getAdvertisingChannelType(),
-          locations: locationIds,
-          languages: languageIds,
-          urlOptions: {
-            trackingTemplate: campaign.urls().getTrackingTemplate()
-          },
-          adGroups: adGroups
-        });
-      }
-
-      accountsData.push({
-        manager_id: managerAccountId,
-        manager_name: managerAccountName,
-        sub_account_id: account.getCustomerId(),
-        sub_account_name: account.getName(),
-        currency_code: currencyCode,
-        campaigns_data: campaigns
-      });
-
-    } catch (e) {
-      Logger.log(`账户 ${account.getCustomerId()} 读取失败: ${e.toString()}。已跳过此账户。`);
-    }
-  }
-
-  // 上传数据
-  var payload = JSON.stringify(accountsData);
-  var options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: payload,
-    headers: {
-      'X-API-Key': secretKey
-    },
-    muteHttpExceptions: true
-  };
-
-  try {
-    var response = UrlFetchApp.fetch(postUrl, options);
-    Logger.log('数据同步服务器响应代码: %s', response.getResponseCode());
-  } catch (e) {
-    Logger.log('数据同步失败: ' + e.toString());
-  }
-
-  Logger.log('--- 账户数据同步完成。 ---');
 }
