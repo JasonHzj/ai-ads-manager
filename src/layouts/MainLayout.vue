@@ -83,7 +83,9 @@ import {
   Expand,
   User,
   DataAnalysis,
-  TrendCharts
+  TrendCharts,
+  ChromeFilled,
+  Link
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { socket } from '@/socket'
@@ -95,7 +97,9 @@ const iconMap = shallowRef<Record<string, any>>({
   DataLine,
   User,
   DataAnalysis,
-  TrendCharts
+  TrendCharts,
+  ChromeFilled,
+  Link
 })
 // ▲▲▲ 修正结束 ▲▲▲
 

@@ -1,10 +1,10 @@
 <template>
-  <el-card class="box-card">
+  <el-card class="box-card link-manager-view">
     <template #header>
       <div class="card-header">
-        <span>账户列表与广告管理</span>
-        <div  class="header-actions">
-          <!-- ▼▼▼ 1. 升级为手动触发的 el-upload 组件 ▼▼▼ -->
+        <span class="title">AI控制台</span>
+        <div class="header-actions">
+          <!-- ▼ 批量AI生成 -->
           <el-upload
             ref="uploadRef"
             :auto-upload="false"
@@ -16,7 +16,7 @@
               <el-button type="success">批量AI生成</el-button>
             </template>
           </el-upload>
-          <!-- ▲▲▲ 修改结束 ▲▲▲ -->
+
           <el-button
             type="primary"
             @click="handleSubmitDrafts"
@@ -24,7 +24,7 @@
           >
             提交草稿
           </el-button>
-           <el-button
+          <el-button
             type="danger"
             @click="handleBatchDelete"
             :disabled="selectedAccounts.length === 0"
@@ -35,6 +35,7 @@
       </div>
     </template>
 
+    <!-- 筛选区 -->
     <div class="filter-container">
       <el-form :inline="true" :model="filters" class="filter-form">
         <el-row :gutter="20" style="width: 100%">
@@ -118,95 +119,134 @@
       </el-form>
     </div>
 
-    <el-table
-      :data="filteredAccounts"
-      style="width: 100%"
-      v-loading="loading"
-      border
-      height="calc(100vh - 320px)"
-      @selection-change="handleSelectionChange"
+    <!-- 表格 -->
+    <el-card class="table-card">
+      <el-table
+        :data="filteredAccounts"
+        style="width: 100%"
+        v-loading="loading"
+        border
+        height="calc(100vh - 320px)"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="50" align="center" fixed />
+
+        <!-- 合并后的子账户信息列 -->
+       <el-table-column
+  label="子账户信息"
+  align="left"
+  width="280"
+  fixed="left"
+  sortable
+>
+  <template #default="scope">
+    <!-- 第一行：子账户名，超出隐藏 + 悬浮提示 -->
+    <el-tooltip
+      class="item"
+      effect="dark"
+      :content="scope.row.sub_account_name"
+      placement="top"
     >
-      <el-table-column type="selection" width="55" fixed />
-      <el-table-column
-        prop="sub_account_name"
-        label="子账户名称"
-        width="250"
-        show-overflow-tooltip
-        fixed
-      />
-      <el-table-column prop="sub_account_id" label="子账户ID" width="120" />
-      <el-table-column prop="manager_name" label="经理账户" width="100" />
-      <el-table-column prop="affiliate_account" label="联盟账号" width="90" />
-      <el-table-column prop="affiliate_network" label="所属联盟" width="90" />
-      <el-table-column label="广告商" width="90" show-overflow-tooltip>
-        <template #default="scope">
-          {{ getAdvertiserName(scope.row) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="占用状态" width="90" align="center">
-        <template #default="scope">
-          <el-tag :type="getCampaignStatus(scope.row.campaigns_data).type" effect="dark">
-            {{ getCampaignStatus(scope.row.campaigns_data).text }}
-          </el-tag>
-        </template>
-      </el-table-column>
-        <el-table-column label="指令状态" width="90" align="center">
-        <template #default="scope">
-          <el-tooltip
-            v-if="scope.row.job_status === 'FAILED' && scope.row.job_result_message"
-            class="box-item"
-            effect="dark"
-            :content="scope.row.job_result_message"
-            placement="top"
-          >
-            <el-tag :type="getJobStatus(scope.row.job_status).type">
-              {{ getJobStatus(scope.row.job_status).text }}
-            </el-tag>
-          </el-tooltip>
+      <div
+        style="
+          font-weight: 600;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 260px;
+        "
+      >
+        {{ scope.row.sub_account_name }}
+      </div>
+    </el-tooltip>
 
-          <template v-else>
-            <el-tag v-if="scope.row.job_status" :type="getJobStatus(scope.row.job_status).type">
-              {{ getJobStatus(scope.row.job_status).text }}
-            </el-tag>
-            <span v-else>--</span>
+    <!-- 第二行：标签显示 -->
+    <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
+      <el-tag size="small" effect="plain" type="info">
+        {{ scope.row.sub_account_id }}
+      </el-tag>
+      <el-tag size="small" effect="plain" type="success">
+        {{ scope.row.manager_name }}
+      </el-tag>
+      <el-tag
+        size="small"
+        :type="getCampaignStatus(scope.row.campaigns_data).type"
+        effect="light"
+      >
+        {{ getCampaignStatus(scope.row.campaigns_data).text }}
+      </el-tag>
+    </div>
+  </template>
+</el-table-column>
+
+        <!-- 保留联盟账号、所属联盟等列 -->
+        <el-table-column prop="affiliate_account" width="130" label="联盟账号" align="center" />
+        <el-table-column prop="affiliate_network" label="联盟" align="center" />
+        <el-table-column label="广告商" align="center" show-overflow-tooltip>
+          <template #default="scope">
+            {{ getAdvertiserName(scope.row) }}
           </template>
-        </template>
-      </el-table-column>
-      <el-table-column prop="account_status" label="账户状态" width="90" align="center">
-        <template #default="scope">
-          <el-tag
-            :type="scope.row.account_status === 'ENABLED' ? 'success' : (scope.row.account_status === 'SHELVED' ? 'danger' : 'info')"
-          >
-            {{ scope.row.account_status === 'ENABLED' ? '启用' : (scope.row.account_status === 'SHELVED' ? '规避' : '暂停') }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="每日预算" width="90" align="right">
-        <template #default="scope">{{ formatBudget(scope.row) }}</template>
-      </el-table-column>
-      <el-table-column label="投放地区" width="180" show-overflow-tooltip>
-        <template #default="scope">{{ getLocations(scope.row.campaigns_data) }}</template>
-      </el-table-column>
-      <el-table-column label="最后修改时间" width="180">
-       <template #default="scope">
-          {{ formatTime(scope.row.job_processed_at || scope.row.last_manual_update) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right" align="center">
-        <template #default="scope">
-          <el-button link type="primary" size="small" @click="handleCreate(scope.row)"
-            >新增</el-button
-          >
-          <el-button link type="success" size="small" @click="handleEdit(scope.row)"
-            >修改</el-button
-          >
-          <el-button link type="danger" size="small" @click="handleDelete(scope.row)"
-            >删除</el-button
-          >
-        </template>
-      </el-table-column>
-    </el-table>
+        </el-table-column>
 
+        <!-- 删除原来的 子账户ID/经理账户/占用状态 列 -->
+
+        <el-table-column label="指令状态" align="center">
+          <template #default="scope">
+            <el-tooltip
+              v-if="scope.row.job_status === 'FAILED' && scope.row.job_result_message"
+              class="box-item"
+              effect="dark"
+              :content="scope.row.job_result_message"
+              placement="top"
+            >
+              <el-tag :type="getJobStatus(scope.row.job_status).type">
+                {{ getJobStatus(scope.row.job_status).text }}
+              </el-tag>
+            </el-tooltip>
+
+            <template v-else>
+              <el-tag v-if="scope.row.job_status" :type="getJobStatus(scope.row.job_status).type">
+                {{ getJobStatus(scope.row.job_status).text }}
+              </el-tag>
+              <span v-else>--</span>
+            </template>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="account_status" label="账户状态" align="center">
+          <template #default="scope">
+            <el-tag
+              :type="scope.row.account_status === 'ENABLED' ? 'success' : (scope.row.account_status === 'SHELVED' ? 'danger' : 'info')"
+            >
+              {{ scope.row.account_status === 'ENABLED' ? '启用' : (scope.row.account_status === 'SHELVED' ? '规避' : '暂停') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="每日预算" align="center">
+          <template #default="scope">{{ formatBudget(scope.row) }}</template>
+        </el-table-column>
+        <el-table-column label="投放地区" align="center" show-overflow-tooltip>
+          <template #default="scope">{{ getLocations(scope.row.campaigns_data) }}</template>
+        </el-table-column>
+        <el-table-column label="最后修改时间" align="center">
+          <template #default="scope">
+            {{ formatTime(scope.row.job_processed_at || scope.row.last_manual_update) }}
+          </template>
+        </el-table-column>
+
+        <!-- 操作列 -->
+        <el-table-column label="操作" :width="150" align="center" fixed="right">
+          <template #default="scope">
+            <el-button link type="primary" size="small" @click="handleCreate(scope.row)">新增</el-button>
+            <el-button link type="success" size="small" @click="handleEdit(scope.row)">修改</el-button>
+            <el-button link type="danger" size="small" @click="handleDelete(scope.row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 抽屉 -->
     <AdCampaignDrawer
       :visible="drawer.visible"
       :account="drawer.selectedAccount"
@@ -214,7 +254,8 @@
       @close="closeDrawer"
       @success="onDrawerSuccess"
     />
-    <!-- ▼▼▼ 2. 新增一个用于显示处理进度的对话框 ▼▼▼ -->
+
+    <!-- 处理进度对话框 -->
     <el-dialog v-model="progress.visible" title="批量处理中..." :close-on-click-modal="false" :show-close="false" width="50%">
       <div class="progress-content">
         <p>正在处理第 {{ progress.current }} / {{ progress.total }} 条记录：</p>
@@ -223,7 +264,6 @@
         <p v-if="progress.statusText" class="status-text">{{ progress.statusText }}</p>
       </div>
     </el-dialog>
-    <!-- ▲▲▲ 新增结束 ▲▲▲ -->
   </el-card>
 </template>
 
@@ -727,6 +767,18 @@ const handleDelete = async (account: Account) => {
 </script>
 
 <style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+.link-manager-view {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -750,7 +802,7 @@ const handleDelete = async (account: Account) => {
   background-color: #fcfcfc;
   border-radius: 4px;
   margin-bottom: 20px;
-  border: 1px solid #f0f0f0;
+  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
 }
 .filter-form .el-form-item {
   margin-bottom: 18px;

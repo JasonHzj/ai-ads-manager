@@ -126,31 +126,31 @@
       height="calc(100vh - 320px)"
       @selection-change="handleSelectionChange"
     >
-      <el-table-column type="selection" width="55" fixed />
+      <el-table-column type="selection"  fixed />
       <el-table-column
         prop="sub_account_name"
         label="子账户名称"
-        width="250"
+        align="center"
         show-overflow-tooltip
         fixed
       />
-      <el-table-column prop="sub_account_id" label="子账户ID" width="120" />
-      <el-table-column prop="manager_name" label="经理账户" width="100" />
-      <el-table-column prop="affiliate_account" label="联盟账号" width="90" />
-      <el-table-column prop="affiliate_network" label="所属联盟" width="90" />
-      <el-table-column label="广告商" width="90" show-overflow-tooltip>
+      <el-table-column prop="sub_account_id" label="子账户ID" align="center" />
+      <el-table-column prop="manager_name" label="经理账户" align="center"/>
+      <el-table-column prop="affiliate_account" label="联盟账号" align="center" />
+      <el-table-column prop="affiliate_network" label="所属联盟" align="center" />
+      <el-table-column label="广告商" align="center" show-overflow-tooltip>
         <template #default="scope">
           {{ getAdvertiserName(scope.row) }}
         </template>
       </el-table-column>
-      <el-table-column label="占用状态" width="90" align="center">
+      <el-table-column label="占用状态" align="center" >
         <template #default="scope">
           <el-tag :type="getCampaignStatus(scope.row.campaigns_data).type" effect="dark">
             {{ getCampaignStatus(scope.row.campaigns_data).text }}
           </el-tag>
         </template>
       </el-table-column>
-        <el-table-column label="指令状态" width="90" align="center">
+        <el-table-column label="指令状态" align="center">
         <template #default="scope">
           <el-tooltip
             v-if="scope.row.job_status === 'FAILED' && scope.row.job_result_message"
@@ -172,7 +172,7 @@
           </template>
         </template>
       </el-table-column>
-      <el-table-column prop="account_status" label="账户状态" width="90" align="center">
+      <el-table-column prop="account_status" label="账户状态" align="center" >
         <template #default="scope">
           <el-tag
             :type="scope.row.account_status === 'ENABLED' ? 'success' : (scope.row.account_status === 'SHELVED' ? 'danger' : 'info')"
@@ -181,18 +181,18 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="每日预算" width="90" align="right">
+      <el-table-column label="每日预算" align="center">
         <template #default="scope">{{ formatBudget(scope.row) }}</template>
       </el-table-column>
-      <el-table-column label="投放地区" width="180" show-overflow-tooltip>
+      <el-table-column label="投放地区" align="center" show-overflow-tooltip>
         <template #default="scope">{{ getLocations(scope.row.campaigns_data) }}</template>
       </el-table-column>
-      <el-table-column label="最后修改时间" width="180">
+      <el-table-column label="最后修改时间" align="center">
        <template #default="scope">
           {{ formatTime(scope.row.job_processed_at || scope.row.last_manual_update) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right" align="center">
+      <el-table-column label="操作"  fixed="right" align="center">
         <template #default="scope">
           <el-button link type="primary" size="small" @click="handleCreate(scope.row)"
             >新增</el-button

@@ -44,6 +44,18 @@ const routes: Array<RouteRecordRaw> = [
           permission: 'can_view_ai_jobs',
         },
       },
+      {
+        path: 'ad-accounts',
+        name: 'AdAccounts',
+        component: () => import('../views/AdAccountsView.vue'),
+        meta: { requiresAuth: true, title: 'Ads子账户', icon: 'ChromeFilled' },
+      },
+      {
+        path: 'link-management',
+        name: 'LinkChangeManagement',
+        component: () => import('../views/LinkChangeManagement.vue'),
+        meta: { requiresAuth: true, title: '换链接管理', icon: 'Link' },
+      },
       // ▼▼▼ CORE FIX: Use the 'children' property for sub-routes ▼▼▼
       {
         path: 'commission-data',

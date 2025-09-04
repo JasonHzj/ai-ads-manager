@@ -68,7 +68,7 @@ const platform = ref('Linkbux')
 
 const loading = ref(true)
 const dateRange = ref<[string, string] | null>([
-  dayjs().startOf('month').format('YYYY-MM-DD'),
+  dayjs().subtract(29, 'day').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD')
 ])
 const dashboardData = ref<DashboardData | null>(null)
@@ -157,6 +157,14 @@ watch([dateRange, platform], () => {
 
 // --- 快捷方式 (与您原有代码一致) ---
 const shortcuts = [
+  {
+  text: '近30天',
+  value: () => {
+    const end = dayjs().toDate()
+    const start = dayjs().subtract(29, 'day').toDate() // 注意减29天，包含今天共30天
+    return [start, end]
+  }
+},
     {
     text: '本周',
     value: () => {

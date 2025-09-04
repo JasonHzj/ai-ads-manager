@@ -229,3 +229,71 @@ export const getRightPanelAdDetailAPI = (
   apiClient.get<{ data: RightPanelData }>('/api/dashboard/right-panel/ad-detail', {
     params: { startDate, endDate, adId, platform },
   })
+// =======================================================================
+// ▼▼▼ 新增的看板API函数 ▼▼▼
+// =======================================================================
+
+/**
+ * 1. 获取Ads子账户看板数据
+ * @param params - 包含 startDate 和 endDate 的对象
+ */
+export const getAdAccountsDashboardAPI = (params: { startDate?: string; endDate?: string }) => {
+  return apiClient.get('/api/ad-accounts/dashboard', { params })
+}
+
+/**
+ * 2. 更新子账户信息 (表格内编辑保存)
+ * @param id - google_ads_accounts 表的主键ID
+ * @param data - 需要更新的数据
+ */
+export const updateAdAccountAPI = (id: number, data: any) => {
+  return apiClient.put(`/api/ad-accounts/${id}`, data)
+}
+
+/**
+ * 3. 管理余额 (设置初始值或充值)
+ * @param data - 包含 sub_account_id, initial_balance, recharge_amount 等
+ */
+export const manageBalanceAPI = (data: {
+  sub_account_id: string
+  initial_balance?: number
+  recharge_amount?: number
+  note?: string
+}) => {
+  return apiClient.post('/api/ad-accounts/balance', data)
+}
+// =======================================================================
+//           换链接管理页面相关 API (Link Change Management APIs)
+// =======================================================================
+
+/**
+ * 1. 获取换链接管理页面的整合数据
+ * @param params - 包含筛选和搜索条件的对象
+ */
+export const getManagementDataAPI = (params: {
+  manager_name?: string
+  affiliate_account?: string
+  affiliate_network?: string
+  search_query?: string
+}) => {
+  return apiClient.get('/api/management_data', { params })
+}
+
+/**
+ * 2. 根据联盟平台和广告ID，获取智能填充建议
+ * @param params - 包含 affiliate_network 和 advertiser_id 的对象
+ */
+export const getOfferSuggestionsAPI = (params: {
+  affiliate_network: string
+  advertiser_id: string
+}) => {
+  return apiClient.get('/api/offer_suggestions', { params })
+}
+
+/**
+ * 3. 保存（新增或更新）换链接任务的配置
+ * @param data - 包含整行任务数据的对象
+ */
+export const saveLinkJobAPI = (data: any) => {
+  return apiClient.post('/api/save_job', data)
+}

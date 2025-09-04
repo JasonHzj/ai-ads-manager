@@ -297,7 +297,7 @@ onUnmounted(() => {
 .button-group {
   display: flex;
   align-items: center;
-  padding-bottom: 8px; /* 对齐输入框 */
+  padding-bottom: 18px; /* 对齐输入框 */
   gap: 8px;
 }
 .progress-container {
