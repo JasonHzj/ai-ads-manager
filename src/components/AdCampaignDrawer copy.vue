@@ -16,6 +16,7 @@
         </div>
         <div class="drawer-body">
           <el-form ref="formRef" :model="form" :rules="rules" label-position="top" v-loading="isLoading">
+            <!-- 表单内容 -->
             <el-form-item label="广告系列名" prop="campaignName">
               <el-input v-model="form.campaignName" placeholder="请输入广告系列名称" />
             </el-form-item>
@@ -67,59 +68,9 @@
                 <el-option label="广泛匹配" value="BROAD" />
               </el-select>
             </el-form-item>
-            <el-form-item label="广告链接 (广告主链接)" prop="adLink">
+            <el-form-item label="广告链接" prop="adLink">
               <el-input v-model="form.adLink" placeholder="https://example.com" />
             </el-form-item>
-
-            <el-divider content-position="left">自动换链接设置</el-divider>
-            <el-form-item label="启用自动换链接">
-              <el-switch v-model="form.enable_link_change" />
-            </el-form-item>
-            <template v-if="form.enable_link_change">
-              <el-form-item label="联盟广告链接" prop="affiliate_offer_link">
-                <el-select
-                  v-model="form.affiliate_offer_link"
-                  filterable
-                  allow-create
-                  default-first-option
-                  placeholder="请选择或输入链接"
-                  @focus="getOfferLinkSuggestions"
-                  style="width: 100%;"
-                  :loading="loading.suggestion"
-                >
-                  <el-option v-for="item in offerSuggestions" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-              </el-form-item>
-              <el-row :gutter="24">
-              <el-col :span="8">
-              <el-form-item label="追溯信息" prop="affiliate_offer_params">
-                 <el-input v-model="form.affiliate_offer_params" @focus="autoFillAffiliateParams" placeholder="例如: subid={clickid}&channel=google" />
-              </el-form-item>
-              </el-col>
-                <el-col :span="8">
-              <el-form-item label="换链接间隔 (分钟)" prop="change_interval_minutes">
-                <el-select v-model="form.change_interval_minutes" filterable allow-create default-first-option placeholder="请选择或输入分钟数" style="width: 100%;">
-                  <el-option label="5分钟" :value="5" />
-                  <el-option label="10分钟" :value="10" />
-                  <el-option label="15分钟" :value="15" />
-                  <el-option label="30分钟" :value="30" />
-                  <el-option label="60分钟" :value="60" />
-                  <el-option label="120分钟" :value="120" />
-                </el-select>
-              </el-form-item>
-              </el-col>
-              <el-col :span="8">
-              <el-form-item label="来源 (Referer)" prop="referer_link">
-                <el-select v-model="form.referer_link" filterable allow-create default-first-option placeholder="请选择或输入" style="width: 100%;">
-                  <el-option label="Facebook" value="http://facebook.com/" />
-                  <el-option label="X.com" value="https://x.com/" />
-                  <el-option label="TikTok" value="https://www.tiktok.com/" />
-                  <el-option label="Instagram" value="https://www.instagram.com/" />
-                </el-select>
-              </el-form-item>
-              </el-col>
-              </el-row>
-            </template>
             <el-divider content-position="left">AI生成内容填充区</el-divider>
             <el-form-item label="广告标题 (每行一个)">
               <el-input v-model="form.headlines" type="textarea" :rows="8" placeholder="由AI生成，每行一个标题" />
@@ -139,6 +90,7 @@
       </div>
     </el-drawer>
 
+    <!-- 子组件1: AI 助手抽屉 -->
     <AiHelperDrawer
       :visible="isAiHelperVisible"
       :base-info="{
@@ -151,6 +103,7 @@
       @generation-complete="handleAiGenerationComplete"
     />
 
+    <!-- 子组件2: AI 结果模态框 -->
     <AiResultModal
       v-if="isAiModalVisible"
       :visible="isAiModalVisible"
@@ -166,12 +119,12 @@
 <script setup lang="ts">
 import { ref, reactive, watch, computed } from 'vue'
 import type { PropType } from 'vue'
-import { saveDraftAPI, getLanguagesForCountryAPI, rewriteAiAdItemAPI, getOfferSuggestionsAPI, getPlatformSettingsAPI } from '@/api'
+import { saveDraftAPI, getLanguagesForCountryAPI, rewriteAiAdItemAPI } from '@/api'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import AiHelperDrawer from './AiHelperDrawer.vue'
 import AiResultModal from './AiResultModal.vue'
-import type { AiResults, PlatformSetting } from '@/types'
+import type { AiResults } from '@/types'
 import { useAdOptions } from '@/composables/useAdOptions'
 
 interface Account {
@@ -181,15 +134,6 @@ interface Account {
   currency_code: string;
   campaigns_data: any[] | null;
   job_payload?: any | null;
-  affiliate_network?: string | null;
-  affiliate_account?: string | null;
-  advertiser_id?: string | null;
-  link_change_job?: {
-      affiliate_offer_link: string;
-      affiliate_offer_params: string;
-      change_interval_minutes: number;
-      referer_link: string;
-  } | null;
 }
 const props = defineProps({
   visible: Boolean,
@@ -204,7 +148,6 @@ const form = ref<any>({})
 const loading = reactive({
   languages: false,
   submit: false,
-  suggestion: false,
 })
 const localLanguages = ref<any[]>([])
 const defaultBudget = ref(1)
@@ -212,9 +155,6 @@ const isEditMode = computed(() => props.mode === 'edit')
 const originalCampaignId = ref<string | null>(null);
 const originalAdGroupId = ref<string | null>(null);
 const formRef = ref<FormInstance | null>(null);
-const offerSuggestions = ref<{ label: string; value: string }[]>([]);
-const platformSettings = ref<PlatformSetting[]>([]);
-
 const rules = reactive<FormRules>({
   campaignName: [{ required: true, message: '请输入广告系列名称', trigger: 'blur' }],
   budget: [{ required: true, message: '请输入每日预算', trigger: 'blur' }],
@@ -223,26 +163,6 @@ const rules = reactive<FormRules>({
   keywords: [{ required: true, message: '请输入关键字', trigger: 'blur' }],
   keywordMatchType: [{ required: true, message: '请选择关键字匹配类型', trigger: 'change' }],
   adLink: [{ required: true, message: '请输入广告链接', trigger: 'blur' }],
-  affiliate_offer_link: [{
-    validator: (rule, value, callback) => {
-      if (form.value.enable_link_change && !value) {
-        callback(new Error('启用时，联盟广告链接不能为空'));
-      } else {
-        callback();
-      }
-    },
-    trigger: 'blur'
-  }],
-    affiliate_offer_params: [{
-    validator: (rule, value, callback) => {
-      if (form.value.enable_link_change && !value) {
-        callback(new Error('启用时，追溯信息不能为空'));
-      } else {
-        callback();
-      }
-    },
-    trigger: 'blur'
-  }],
 });
 
 const getEmptyForm = () => {
@@ -251,14 +171,9 @@ const getEmptyForm = () => {
 
   return {
       campaignName: '', campaignStatus: 'ENABLED', budget: defaultBudget.value,
-      locations: [], languages: [1000], keywords: '', // locations 默认给空数组
+      locations: ['all'], languages: [1000], keywords: '',
       keywordMatchType: 'EXACT', adLink: '', headlines: '', descriptions: '',
-      enable_link_change: true,
-      affiliate_offer_link: '',
-      affiliate_offer_params: '',
-      change_interval_minutes: 10,
-      referer_link: '',
-   };
+  };
 }
 
 const initializeForm = (account: Account) => {
@@ -266,43 +181,18 @@ const initializeForm = (account: Account) => {
   let sourceData: any = {};
   let dataFound = false;
 
-  offerSuggestions.value = [];
-
   if (account.job_payload) {
     sourceData = typeof account.job_payload === 'string' ? JSON.parse(account.job_payload) : account.job_payload;
     dataFound = true;
   }
   else if (account.campaigns_data && account.campaigns_data.length > 0) {
     const campaign = account.campaigns_data[0];
-
-    // ▼▼▼ 【V6 核心 Bug 修复】: 反向映射国家和语言名称到ID ▼▼▼
-    let locationIds: (string|number)[] = campaign.locations || [];
-    if (locationIds.length > 0 && typeof locationIds[0] === 'string') {
-        const locationMap = new Map<string, number>();
-        countries.value.forEach(c => {
-            locationMap.set(c.name, c.criterion_id);
-            locationMap.set(c.name_zh, c.criterion_id);
-        });
-        locationIds = locationIds.map(name => locationMap.get(name as string)).filter(Boolean) as number[];
-    }
-
-    let languageIds: (string|number)[] = campaign.languages || [];
-    if (languageIds.length > 0 && typeof languageIds[0] === 'string') {
-        const languageMap = new Map<string, number>();
-        allLanguages.value.forEach(l => {
-            languageMap.set(l.name, l.criterion_id);
-            languageMap.set(l.name_zh, l.criterion_id);
-        });
-        languageIds = languageIds.map(name => languageMap.get(name as string)).filter(Boolean) as number[];
-    }
-    // ▲▲▲ Bug 修复结束 ▲▲▲
-
     sourceData = {
       campaignName: campaign.name,
       campaignStatus: campaign.status || 'ENABLED',
       budget: campaign.budget,
-      locations: locationIds.length > 0 ? locationIds : [],
-      languages: languageIds.length > 0 ? languageIds : [1000],
+      locations: campaign.locations?.length > 0 ? campaign.locations : [],
+      languages: campaign.languages,
       keywords: campaign.adGroups[0]?.keywords,
       keywordMatchType: campaign.adGroups[0]?.keywords[0]?.matchType || 'EXACT',
       adLink: campaign.adGroups[0]?.ads[0]?.finalUrls[0] || '',
@@ -331,15 +221,6 @@ const initializeForm = (account: Account) => {
     form.value = getEmptyForm();
   }
 
-  if (account.link_change_job) {
-      form.value.enable_link_change = true;
-      const linkJob = account.link_change_job;
-      form.value.affiliate_offer_link = linkJob.affiliate_offer_link || '';
-      form.value.affiliate_offer_params = linkJob.affiliate_offer_params || '';
-      form.value.change_interval_minutes = linkJob.change_interval_minutes || 10;
-      form.value.referer_link = linkJob.referer_link || '';
-  }
-
   if (isEditMode.value) {
     if (account.job_payload) {
         originalCampaignId.value = sourceData.campaignId || null;
@@ -355,63 +236,57 @@ const initializeForm = (account: Account) => {
 }
 
 const updateAvailableLanguages = async (selectedCountryIds: (string|number)[]) => {
-  if (Array.isArray(selectedCountryIds) && selectedCountryIds.length > 0 && !selectedCountryIds.includes('all')) {
-     loading.languages = true;
-     try {
-       // 如果只选了一个国家，就获取该国特定语言
-       if (selectedCountryIds.length === 1) {
-         const res = await getLanguagesForCountryAPI(selectedCountryIds[0]);
-         localLanguages.value = res.data.data;
-       } else {
-         // 如果选了多个国家，显示所有语言
-         localLanguages.value = [...allLanguages.value];
-       }
-     } catch (error) {
-       console.error('获取语言列表失败:', error);
-       localLanguages.value = [...allLanguages.value]; // 出错时也显示所有语言
-     } finally {
-       loading.languages = false;
-     }
-  } else {
-     // 如果没选国家，或选择了 "all", 默认只显示英语
+  if (Array.isArray(selectedCountryIds) && selectedCountryIds.length > 1) {
+    localLanguages.value = [...allLanguages.value];
+    return;
+  }
+  if (!selectedCountryIds || selectedCountryIds.length === 0 || selectedCountryIds.includes('all')) {
     const english = allLanguages.value.find(lang => lang.criterion_id === 1000);
     localLanguages.value = english ? [english] : [];
+    return;
   }
+  loading.languages = true;
+  try {
+    const res = await getLanguagesForCountryAPI(selectedCountryIds[0]);
+    localLanguages.value = res.data.data;
+  } catch (error) { console.error('获取语言列表失败:', error); }
+  finally { loading.languages = false; }
 };
 
-// 【V6 核心联动逻辑修复】
 const handleCountryChange = async (selectedCountryIds: (string|number)[]) => {
   await updateAvailableLanguages(selectedCountryIds);
-  const currentLanguageIds = form.value.languages || [];
-  // 过滤掉当前已选语言中，在新语言列表里不存在的语言
-  form.value.languages = currentLanguageIds.filter((langId: number) =>
-    localLanguages.value.some(lang => lang.criterion_id === langId)
-  );
+  if (selectedCountryIds.includes('all')) {
+    form.value.languages = [1000];
+  } else {
+    form.value.languages = [];
+  }
 };
-
 
 watch(() => props.visible, async (isVisible) => {
   if (isVisible) {
     const account = props.account;
     if (!account) return;
     initializeForm(account);
-    // 必须在 initializeForm 之后调用，以确保 form.value.locations 有正确的值
     await updateAvailableLanguages(form.value.locations);
   }
 });
 
-// --- AI 联动逻辑 (保持不变) ---
+// --- AI 联动逻辑 ---
 const isAiHelperVisible = ref(false)
 const isAiModalVisible = ref(false)
 const aiGeneratedContent = ref<AiResults>({ headlines: [], descriptions: [] })
+
 const lastAiPayload = ref<any>({});
+
 const openAiHelper = () => { isAiHelperVisible.value = true }
+
 const handleAiGenerationComplete = (data: { results: AiResults, payload: any }) => {
   aiGeneratedContent.value = data.results
-  lastAiPayload.value = data.payload;
+  lastAiPayload.value = data.payload; // 存储请求参数
   isAiHelperVisible.value = false
   isAiModalVisible.value = true
 }
+
 const applyAiContent = (finalContent: { headlines: string[], descriptions: string[] }) => {
   if (finalContent.headlines && finalContent.headlines.length > 0) {
     form.value.headlines = finalContent.headlines.join('\n')
@@ -422,24 +297,34 @@ const applyAiContent = (finalContent: { headlines: string[], descriptions: strin
   isAiModalVisible.value = false
   ElMessage.success('文案已成功应用！')
 }
+
 const handleRegenerate = () => {
   isAiModalVisible.value = false
   isAiHelperVisible.value = true
 }
-const handleRegenerateItem = async (payload: { type: 'headline' | 'description'; index: number; original: string; }) => {
+
+
+const handleRegenerateItem = async (payload: {
+  type: 'headline' | 'description';
+  index: number;
+  original: string;
+}) => {
+  // 增加检查，确保有可用的上下文
   if (!lastAiPayload.value || !lastAiPayload.value.ai_prompt) {
     ElMessage.error('无法重写，缺少AI提示词上下文。请先进行一次完整的生成。');
     return;
   }
+
   ElMessage.info('正在请求AI重写，请稍候...')
   try {
     const response = await rewriteAiAdItemAPI({
       textToRewrite: payload.original,
       itemType: payload.type,
-      context: lastAiPayload.value.ai_prompt,
-      model: lastAiPayload.value.model,
-      target_language: lastAiPayload.value.target_language,
+      context: lastAiPayload.value.ai_prompt,      // 使用存储的提示词
+      model: lastAiPayload.value.model,              // 使用存储的模型
+      target_language: lastAiPayload.value.target_language, // 使用存储的语言
     });
+
     const resData = response.data;
     if (resData && resData.status === 0) {
       if (payload.type === 'headline') {
@@ -456,47 +341,18 @@ const handleRegenerateItem = async (payload: { type: 'headline' | 'description';
   }
 };
 
-const getOfferLinkSuggestions = async () => {
-    if (offerSuggestions.value.length > 0) return;
-    const network = props.account?.affiliate_network;
-    const advertiserId = props.account?.advertiser_id;
-    if (!network || !advertiserId) { return; }
-    loading.suggestion = true;
-    try {
-        const res = await getOfferSuggestionsAPI({ affiliate_network: network, advertiser_id: advertiserId });
-        if (res.data.status === 0 && res.data.data) {
-            offerSuggestions.value = res.data.data.offer_links;
-            if (!form.value.adLink) {
-               form.value.adLink = res.data.data.advertiser_link;
-            }
-        }
-    } catch (error) {
-        console.error('获取Offer建议失败:', error);
-    } finally {
-        loading.suggestion = false;
-    }
-};
-
-const autoFillAffiliateParams = () => {
-    if (form.value.affiliate_offer_params) return;
-    const network = props.account?.affiliate_network ? props.account.affiliate_network.toUpperCase() : '';
-    const affiliateAccount = props.account?.affiliate_account;
-    if (['PM', 'PB', 'LB'].includes(network) && affiliateAccount) {
-        form.value.affiliate_offer_params = `&uid=${affiliateAccount}_date_`;
-    }
-};
-
 const handleSaveDraft = async () => {
   if (!formRef.value) return;
+
   try {
     await formRef.value.validate();
+
     loading.submit = true;
     try {
       const payload: any = {
         campaignName: form.value.campaignName,
         campaignStatus: form.value.campaignStatus,
         budget: form.value.budget,
-        // 【V6 最终修复】确保 'all' 被转换为空数组
         locations: form.value.locations.includes('all') ? [] : form.value.locations,
         languages: form.value.languages,
         keywords: form.value.keywords.split('\n').filter((k: string) => k.trim() !== ''),
@@ -517,11 +373,6 @@ const handleSaveDraft = async () => {
         subAccountId: props.account?.sub_account_id,
         actionType: isEditMode.value ? 'UPDATE' : 'CREATE',
         payload: payload,
-        enable_link_change: form.value.enable_link_change,
-        affiliate_offer_link: form.value.affiliate_offer_link,
-        affiliate_offer_params: form.value.affiliate_offer_params,
-        change_interval_minutes: form.value.change_interval_minutes,
-        referer_link: form.value.referer_link,
       };
       await saveDraftAPI(draftData);
       ElMessage.success('草稿保存成功！');
@@ -531,6 +382,7 @@ const handleSaveDraft = async () => {
     } finally {
       loading.submit = false;
     }
+
   } catch (validationErrors) {
     ElMessage.error('表单信息不完整，请检查！');
     console.log('表单验证失败:', validationErrors)

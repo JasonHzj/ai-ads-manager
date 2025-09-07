@@ -297,3 +297,9 @@ export const getOfferSuggestionsAPI = (params: {
 export const saveLinkJobAPI = (data: any) => {
   return apiClient.post('/api/save_job', data)
 }
+/**
+ * 3. 获取当前用户的所有联盟平台设置
+ */
+export const getPlatformSettingsAPI = () => {
+  return apiClient.get('/api/offer_suggestions')
+}

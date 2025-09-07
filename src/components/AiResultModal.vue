@@ -30,10 +30,7 @@
                 </div>
                 <el-input v-model="item.translation_zh" />
                 <div class="action-buttons">
-                   <el-button @click="regenerateItem('headline', index)" type="primary" link>
-                      <el-icon><Refresh /></el-icon>
-                      重写
-                   </el-button>
+                   <el-button @click="regenerateItem('headline', index)" :icon="Refresh" circle />
                 </div>
               </div>
             </template>
@@ -61,10 +58,7 @@
                 </div>
                 <el-input v-model="item.translation_zh" type="textarea" :autosize="{ minRows: 2 }" />
                 <div class="action-buttons">
-                   <el-button @click="regenerateItem('description', index)" type="primary" link>
-                      <el-icon><Refresh /></el-icon>
-                      重写
-                   </el-button>
+                   <el-button @click="regenerateItem('description', index)" type="primary" :icon="Refresh" circle/>
                 </div>
               </div>
             </template>
@@ -218,7 +212,7 @@ const regenerateItem = (type: 'headline' | 'description', index: number) => {
 .edit-row {
   display: grid;
   grid-template-columns: calc(50% - 40px) calc(50% - 40px) 80px;
-  gap: 20px;
+  gap: 10px;
   margin-bottom: 15px;
   align-items: center;
 }

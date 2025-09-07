@@ -39,6 +39,7 @@ export interface Account {
   manager_name: string
   currency_code: 'USD' | 'CNY' | 'HKD' | string
   campaigns_data: Campaign[] | null
+  affiliate_account?: string | null // <--- 在这里添加
   [key: string]: any
 }
 
@@ -71,3 +72,23 @@ export interface UserInfo {
   // --- 新增: 为 UserInfo 添加可选的 token 字段 ---
   linkbux_api_token?: string | null
 }
+
+// =======================================================
+// ▼▼▼ 【核心新增】导出 PlatformSetting 类型 ▼▼▼
+// =======================================================
+export interface PlatformSetting {
+  id: number
+  user_id: number
+  platform_name: string
+  api_key: string
+  api_secret: string
+  other_config: string
+  default_params: string
+  default_interval: number
+  default_referer: string
+  created_at: string
+  updated_at: string
+}
+// =======================================================
+// ▲▲▲ 新增结束 ▲▲▲
+// =======================================================
